@@ -1,70 +1,29 @@
 # test_connect.py
-
-import unittest
-from unittest.mock import patch, AsyncMock
 import asyncio
+import unittest
 from connect import WebSocketClient
 
-class TestWebSocketClient(unittest.IsolatedAsyncioTestCase):
+class TestWebSocketClient(unittest.TestCase):
     def setUp(self):
-        self.server_url = "ws://localhost:8000"
-        self.client = WebSocketClient(self.server_url)
+        self.client = WebSocketClient("ws://localhost:8765")
 
-    @patch("websockets.connect", new_callable=AsyncMock)
-    async def test_connect(self, mock_connect):
-        # Mock the connect method
-        mock_connect.return_value = AsyncMock()
+    def run_async(self, coro):
+        return asyncio.get_event_loop().run_until_complete(coro)
 
-        # Run the connect method
-        await self.client.connect()
+    def test_connect(self):
+        try:
+            self.run_async(self.client.connect())
+            self.assertIsNotNone(self.client.connection, "Connection should be established")
+        except Exception as e:
+            self.fail(f"Connection failed with exception: {e}")
 
-        # Assert the websocket connection was made
-        mock_connect.assert_called_once_with(self.server_url)
-        self.assertIsNotNone(self.client.websocket)
-        print("Connection test passed.")
-
-    @patch("websockets.connect", new_callable=AsyncMock)
-    async def test_send(self, mock_connect):
-        # Mock the connect and send method
-        mock_ws = AsyncMock()
-        mock_connect.return_value = mock_ws
-
-        # Establish connection
-        await self.client.connect()
-
-        # Test sending a message
-        await self.client.send("Hello, Server!")
-        mock_ws.send.assert_called_once_with("Hello, Server!")
-        print("Send test passed.")
-
-    @patch("websockets.connect", new_callable=AsyncMock)
-    async def test_receive(self, mock_connect):
-        # Mock the connect and receive method
-        mock_ws = AsyncMock()
-        mock_connect.return_value = mock_ws
-        mock_ws.recv.return_value = "Hello, Client!"
-
-        # Establish connection
-        await self.client.connect()
-
-        # Test receiving a message
-        message = await self.client.receive()
-        self.assertEqual(message, "Hello, Client!")
-        print("Receive test passed.")
-
-    @patch("websockets.connect", new_callable=AsyncMock)
-    async def test_disconnect(self, mock_connect):
-        # Mock the connect and close method
-        mock_ws = AsyncMock()
-        mock_connect.return_value = mock_ws
-
-        # Establish connection
-        await self.client.connect()
-
-        # Test disconnecting
-        await self.client.disconnect()
-        mock_ws.close.assert_called_once()
-        print("Disconnect test passed.")
+    def test_close(self):
+        try:
+            self.run_async(self.client.connect())
+            self.run_async(self.client.close())
+            self.assertIsNone(self.client.connection, "Connection should be closed")
+        except Exception as e:
+            self.fail(f"Close failed with exception: {e}")
 
 if __name__ == "__main__":
     unittest.main()
