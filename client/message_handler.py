@@ -62,6 +62,9 @@ class MessageHandler:
             "counter": self.counter,
             "signature": None,
         }
+        json_message = json.dumps(message)
+        await self.connection.send(json_message)
+        print (f"Sent public message: {json_message}")
     
     async def receive_client_list(self):
         pass
