@@ -1,22 +1,72 @@
+# message_handler.py
 import json
+import base64
+# from security_module import encrypt_message, decrypt_message, sign_message, verify_signature
 
 class MessageHandler:
-    def create_signed_message(self, message_type, data, counter, private_key):
+    def __init__(self, connection):
+        self.connection = connection
+        self.counter = 0
+        
+    async def send_hello(self, public_key):
+        self.counter += 1
         message = {
-            "type": "signed_data",
             "data": {
-                "type": message_type,
-                **data
+                "type": "hello",
+                "public_key": public_key,
             },
-            "counter": counter
+            "counter": self.counter,
+            "signature": None,
         }
-        message_json = json.dumps(message)
-        signature = self.sign_message(message_json, private_key)
-        message["signature"] = signature
-        return json.dumps(message)
+        json_message = json.dumps(message)
+        await self.connection.send(json_message)
+        print (f"Sent hello message: {json_message}")
+        
+    async def send_chat(self, message, destination_servers, iv, symmetric_keys, recipients_fingerprints):
+        self.counter += 1
+        
+        # Greg Encrypt this message
+        chat = {
+            "participants": recipients_fingerprints,
+            "message": message
+            
+        }
+        #Base64 AES encrypted_message = encrypt_message(chat)
+        encrypted_message = chat
+        
+        message = {
+            "data": {
+                "type": "chat",
+                "destination_servers": destination_servers,
+                "iv": iv,
+                "symmetric_key": symmetric_keys,
+                "chat": encrypted_message
+            },
+        }
+        json_message = json.dumps(message)
+        await self.connection.send(json_message)
+        print (f"Sent chat message: {json_message}")
     
-    def sign_message(self, message, private_key):
-        #placeholder function to simulate signing
+    async def send_public_message(self, sender_fingerprint, message):
+        self.counter += 1
         
+        #base64 encode the fingerprint
+        encoded_fingerprint = base64.b64encode(sender_fingerprint)
         
-        return "signature"
+        message = {
+            "data": {
+                "type": "public_message",
+                "sender" : encoded_fingerprint,
+                "message": message
+            },
+            "counter": self.counter,
+            "signature": None,
+        }
+    
+    async def receive_client_list(self):
+        pass
+    
+    async def receive_message(self):
+        pass
+    
+        
