@@ -2,6 +2,7 @@
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA256
 
 from utility import encode_data, decode_data
 
@@ -17,10 +18,13 @@ def generate_RSA_key():
 # Encrypt the message using the public key, utilizing encode_data from utility.py
 def encrypt_message(public_key, message):
     try:
-        key = RSA.import_key(public_key) # Import the key
-        cipher = PKCS1_OAEP.new(key) # Create a new cipher
+        # Import the public key
+        key = RSA.import_key(public_key) 
+        cipher = PKCS1_OAEP.new(key) 
         encryption = cipher.encrypt(message.encode('utf-8'))
         return encode_data(encryption)
+    
+    # Error handling
     except Exception as e:
         print ("Failed to encrypt message!")
         return None
@@ -28,11 +32,34 @@ def encrypt_message(public_key, message):
 # Decrypt the message using the private key, utilizing decode_data from utility.py
 def decrypt_message(private_key, message):
     try:
-        key = RSA.import_key(private_key) # Import the key
-        cipher = PKCS1_OAEP.new(key) # Create a new cipher
+        # Import the key
+        key = RSA.import_key(private_key) 
+        cipher = PKCS1_OAEP.new(key) 
+
         decryption = cipher.decrypt(decode_data(message)).decode('utf-8')
         return decryption
+    
+    # Error handling
     except Exception as e:
         print ("Failed to decrypt message!")
         return None
+
+# Sign message utilizing private key
+def sign_message(private_key, message):
+    try:
+        # Import the private key
+        key = RSA.import_key(private_key)
+
+       # Create a hash and sign the message
+        hash_message = SHA256.new(message.encode('utf-8'))
+        signature = pkcs1_15.new(key).sign(hash_message)
+        return encode_data(signature)
+    
+    # Error handling
+    except Exception as e:
+        print ("Failed to sign message!")
+        return None
+    
+    
+
 
