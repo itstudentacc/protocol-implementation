@@ -60,6 +60,22 @@ def sign_message(private_key, message):
         print ("Failed to sign message!")
         return None
     
+
+# Verify message
+def verify_signature(public_key, message, signature):
+    try:
+        # Import the public key
+        key = RSA.import_key(public_key)
+
+       # Create a hash and sign the message
+        hash_message = SHA256.new(message.encode('utf-8'))
+        pkcs1_15.new(key).verify(hash_message, decode_data(signature))
+
+        # return it as true if it validates successfully
+        return True
     
+    # Error handling
+    except Exception as e:
+        return False
 
 
