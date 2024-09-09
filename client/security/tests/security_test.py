@@ -4,57 +4,60 @@
 # Testing result can be seen in the terminal
 
 import unittest
-import logging
-from security_module import generate_RSA_key, encrypt_message, decrypt_message, sign_message, verify_signature, generate_fingerprint
-
-# Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+from security_module import (
+    generate_RSA_key,
+    encrypt_message,
+    decrypt_message,
+    sign_message,
+    verify_signature,
+    aes_encrypt,
+    aes_decrypt,
+    generate_fingerprint
+)
+from utility import encode_data, decode_data
+from Crypto.Random import get_random_bytes
 
 class TestSecurityModule(unittest.TestCase):
-    def test_generate_RSA_key(self):
-        private_key, public_key = generate_RSA_key()
-        self.assertIsNotNone(private_key)
-        self.assertIsNotNone(public_key)
-        logging.debug(f"Private Key: {private_key}")
-        logging.debug(f"Public Key: {public_key}")
 
-    def test_encrypt_message(self):
+    def setUp(self):
+        # Generate RSA keys for testing
+        self.private_key, self.public_key = generate_RSA_key()
+        self.message = "This is a test message."
+        self.symmetric_key = get_random_bytes(32)  # AES-GCM requires a 32-byte key
+        self.fingerprint = generate_fingerprint(self.public_key)
+    
+    def test_rsa_key_generation(self):
         private_key, public_key = generate_RSA_key()
-        message = "Hello, World!"
-        encrypted_message = encrypt_message(public_key, message)
+        self.assertIsInstance(private_key, str)
+        self.assertIsInstance(public_key, str)
+    
+    def test_rsa_encryption_decryption(self):
+        encrypted_message = encrypt_message(self.public_key, self.message)
         self.assertIsNotNone(encrypted_message)
-        logging.debug(f"Encrypted Message: {encrypted_message}")
-
-    def test_decrypt_message(self):
-        private_key, public_key = generate_RSA_key()
-        message = "Hello, World!"
-        encrypted_message = encrypt_message(public_key, message)
-        decrypted_message = decrypt_message(private_key, encrypted_message)
-        self.assertEqual(message, decrypted_message)
-        logging.debug(f"Decrypted Message: {decrypted_message}")
-
-    def test_sign_message(self):
-        private_key, public_key = generate_RSA_key()
-        message = "Hello, World!"
-        signature = sign_message(private_key, message)
+        
+        decrypted_message = decrypt_message(self.private_key, encrypted_message)
+        self.assertEqual(self.message, decrypted_message)
+    
+    def test_rsa_signing_verification(self):
+        signature = sign_message(self.private_key, self.message)
         self.assertIsNotNone(signature)
-        logging.debug(f"Signature: {signature}")
-
-    def test_verify_signature(self):
-        private_key, public_key = generate_RSA_key()
-        message = "Hello, World!"
-        signature = sign_message(private_key, message)
-        result = verify_signature(public_key, message, signature)
-        self.assertTrue(result)
-        logging.debug(f"Verification Result: {result}")
-
-    def test_generate_fingerprint(self):
-        private_key, public_key = generate_RSA_key()
-        fingerprint = generate_fingerprint(public_key)
+        
+        is_verified = verify_signature(self.public_key, self.message, signature)
+        self.assertTrue(is_verified)
+    
+    def test_aes_encryption_decryption(self):
+        iv, encrypted_message, tag = aes_encrypt(self.symmetric_key, self.message)
+        self.assertIsNotNone(iv)
+        self.assertIsNotNone(encrypted_message)
+        self.assertIsNotNone(tag)
+        
+        decrypted_message = aes_decrypt(self.symmetric_key, iv, encrypted_message, tag)
+        self.assertEqual(self.message, decrypted_message)
+    
+    def test_fingerprint_generation(self):
+        fingerprint = generate_fingerprint(self.public_key)
         self.assertIsNotNone(fingerprint)
-        self.assertIsInstance(fingerprint, str)
-        logging.debug( f"fingerprint: {fingerprint}")
-
+        self.assertEqual(fingerprint, self.fingerprint)
 
 if __name__ == '__main__':
-    unittest.main(verbosity=2)
+    unittest.main()
