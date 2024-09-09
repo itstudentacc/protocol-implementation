@@ -6,6 +6,8 @@ from Crypto.Hash import SHA256
 
 from utility import encode_data, decode_data
 
+import base64
+
 
 # Generate the RSA key using the imported library
 def generate_RSA_key():
@@ -59,7 +61,23 @@ def sign_message(private_key, message):
     except Exception as e:
         print ("Failed to sign message!")
         return None
+
+# Generate signature
+def generate_signature(private_key, message):
+    try:
+        # Import the private key
+        key = RSA.import_key(private_key)
+
+       # Create a hash and sign the message
+        hash_message = SHA256.new(message.encode('utf-8'))
+        signature = pkcs1_15.new(key).sign(hash_message)
+        return encode_data(signature)
     
+    # Error handling
+    except Exception as e:
+        print ("Failed to generate signature!")
+        return None
+
 
 # Verify message
 def verify_signature(public_key, message, signature):
@@ -77,5 +95,19 @@ def verify_signature(public_key, message, signature):
     # Error handling
     except Exception as e:
         return False
+
+def generate_fingerprint(public_key):
+    try:
+        # Import the public key
+        key = RSA.import_key(public_key) 
+
+        # Create a hash of the public key
+        hash_key = SHA256.new(key.export_key())
+        return hash_key.hexdigest()
+    
+    # error handling
+    except Exception as e:
+        print ("Failed to generate fingerprint")
+        return None
 
 

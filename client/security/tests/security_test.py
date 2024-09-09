@@ -5,7 +5,7 @@
 
 import unittest
 import logging
-from security_module import generate_RSA_key, encrypt_message, decrypt_message, sign_message, verify_signature
+from security_module import generate_RSA_key, encrypt_message, decrypt_message, sign_message, verify_signature, generate_fingerprint
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -47,6 +47,14 @@ class TestSecurityModule(unittest.TestCase):
         result = verify_signature(public_key, message, signature)
         self.assertTrue(result)
         logging.debug(f"Verification Result: {result}")
+
+    def test_generate_fingerprint(self):
+        private_key, public_key = generate_RSA_key()
+        fingerprint = generate_fingerprint(public_key)
+        self.assertIsNotNone(fingerprint)
+        self.assertIsInstance(fingerprint, str)
+        logging.debug( f"fingerprint: {fingerprint}")
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
