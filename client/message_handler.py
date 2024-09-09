@@ -1,7 +1,7 @@
 # message_handler.py
 import json
 import base64
-from client.security import security_module, encrypt_message, decrypt_message, sign_message, verify_signature
+# from security_module import encrypt_message, decrypt_message, sign_message, verify_signature
 
 class MessageHandler:
     def __init__(self, connection):
@@ -18,14 +18,13 @@ class MessageHandler:
             raise Exception("Counter value is not valid")
         self.counter = message["counter"]
     '''
+
         
     async def send_hello(self, public_key):
         self.counter += 1
         
         #Greg sign the message
         #signature = sign_message(public_key)
-        
-        #remove after sign_message is implemented
         signature = "signature"
         
         message = {
@@ -44,18 +43,20 @@ class MessageHandler:
     async def send_chat(self, message, destination_servers, iv, symmetric_keys, recipients_fingerprints):
         self.counter += 1
         
+        # Greg Encrypt this message
         chat = {
             "participants": recipients_fingerprints,
             "message": message
             
         }
+        #Base64 AES encrypted_message = encrypt_message(chat)
         
-        encrypted_message = encrypt_message(symmetric_keys, json.dumps(chat))
+        #Greg sign the message
+        #signature = sign_message(public_key)
+        signature = "signature"
+        encrypted_message = chat
         
-        
-        signature = sign_message(private_key, json.dumps(encrypted_message))
-        
-        chat_message = {
+        message = {
             "type": "signed_data",
             "data": {
                 "type": "chat",
@@ -67,7 +68,7 @@ class MessageHandler:
             "counter": self.counter,
             "signature": signature
         }
-        json_message = json.dumps(chat_message)
+        json_message = json.dumps(message)
         await self.connection.send(json_message)
         print (f"Sent chat message: {json_message}")
     
@@ -81,7 +82,7 @@ class MessageHandler:
         #signature = sign_message(public_key)
         signature = "signature"
         
-        public_message = {
+        message = {
             "type": "signed_data",
             "data": {
                 "type": "public_message",
@@ -91,7 +92,7 @@ class MessageHandler:
             "counter": self.counter,
             "signature": signature,
         }
-        json_message = json.dumps(public_message)
+        json_message = json.dumps(message)
         await self.connection.send(json_message)
         print (f"Sent public message: {json_message}")
     
@@ -251,5 +252,3 @@ class MessageHandler:
         except Exception as e:
             print(f"Error receiving public message: {e}")
             return None
-    
-        
