@@ -10,7 +10,7 @@ class Client:
         self.counter = 0
         self.client = WebSocketClient(server_address)
         self.public_key, self.private_key = self.encryption.generate_rsa_key_pair()
-        self.fingerprint = self.encryption.generate_fingerprint(self.public_key)
+        
 
     async def connect(self):
         # Await connection to WebSocket server
@@ -83,7 +83,7 @@ class Client:
     async def send_public_chat(self, message):
         self.counter += 1
         
-        encoded_fingerprint = base64.b64encode(self.fingerprint).decode()
+        encoded_fingerprint = base64.b64encode(self.public_key).decode()
         
         message = {
             "type": "signed_data",
@@ -124,7 +124,7 @@ class Client:
         """
         try:
             # Receive raw message from WebSocket
-            raw_message = await self.connection.receive()
+            raw_message = await self.client.receive()
             print(f"Received raw message: {raw_message}")
 
             # Parse JSON message
@@ -148,5 +148,52 @@ class Client:
         except Exception as e:
             print(f"Unexpected error: {e}")
             return None
+    
+
+    async def receive_public_message(self):
+        """
+        Receives a public message.
+        Expects a message in the format:
+        {
+            "type": "signed_data",
+            "data": {
+                "type": "public_message",
+                "sender": "<encoded_fingerprint>",
+                "message": "<message>"
+            },
+            "counter": "<counter>",
+            "signature": "<signature>"
+        }
+        """
+        try:
+            # Receive the raw message
+            raw_message = await self.client.receive()
+            print(f"Received raw message: {raw_message}")
+
+            # Parse the message from JSON
+            message = json.loads(raw_message)
+
+            # Extract the sender's fingerprint and decode it to get the public key
+            sender_fingerprint = base64.b64decode(message["data"]["sender"])
+
+            # Validate message type
+            if message["type"] != "signed_data":
+                raise Exception("Invalid message type")
+
+            if message["data"]["type"] != "public_message":
+                raise Exception("Invalid message data type")
+
+            # Extract sender and message
+            decoded_sender = base64.b64decode(message["data"]["sender"]).decode("utf-8")
+            public_message = message["data"]["message"]
+
+            print(f"Public message from {decoded_sender}: {public_message}")
+            return public_message
+
+        except Exception as e:
+            print(f"Error receiving public message: {e}")
+            return None
+
+
         
 

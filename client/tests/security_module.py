@@ -3,6 +3,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
+from cryptography.exceptions import InvalidSignature
+import base64
 import hashlib
 import os
 
@@ -138,19 +140,24 @@ class Encryption:
         return hashlib.sha256(public_key).digest()
     
     
-    # validate the signature against public key of sender
-    def validate_signature(self, message, signature, public_key):
-        # Load public key
-        public_key = serialization.load_pem_public_key(public_key, backend=self.backend)
+    def validate_signature(self, message, signature, public_key_pem):
+        try:
+            # Load public key
+            public_key = serialization.load_pem_public_key(public_key_pem, backend=self.backend)
+
+            # Verify the signature
+            public_key.verify(
+                signature,
+                message,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                hashes.SHA256()
+            )
+            return True
+        except Exception as e:
+            print(f"Signature validation failed: {e}")
+            return False
         
-        # Verify the signature
-        public_key.verify(
-            signature,
-            message,
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=32
-            ),
-            hashes.SHA256()
-        )
-        return True
+        
