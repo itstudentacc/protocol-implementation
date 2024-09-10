@@ -2,13 +2,16 @@
 import asyncio
 import websockets
 
-async def handler(websocket, path):
+async def mock_server(websocket, path):
     async for message in websocket:
-        await websocket.send(f"Echo: {message}")
+        print(f"Received message: {message}")
+        # Optionally, send a response back
+        # await websocket.send("Message received")
 
-async def main():
-    async with websockets.serve(handler, "localhost", 8765):
-        await asyncio.Future()  # Run forever
+# Start the server
+async def start_server():
+    server = await websockets.serve(mock_server, "localhost", 8765)
+    print("Server started on ws://localhost:8765")
+    await asyncio.sleep(3600)  # Keep the server running for 1 hour
 
-if __name__ == "__main__":
-    asyncio.run(main())
+asyncio.run(start_server())

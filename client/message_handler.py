@@ -1,31 +1,23 @@
 # message_handler.py
 import json
 import base64
-# from security_module import encrypt_message, decrypt_message, sign_message, verify_signature
+from security.security_module import Encryption
 
 class MessageHandler:
     def __init__(self, connection):
         self.connection = connection
         self.counter = 0
+        self.encryption = Encryption()
     
-    '''
-    Greg make sure this works
-    
-    def validate_message(self, message):
-        if not verify_signature(message["signature"], message["data"]):
-            raise Exception("Invalid message signature")
-        if message["counter"] <= self.counter:
-            raise Exception("Counter value is not valid")
-        self.counter = message["counter"]
-    '''
-
-        
-    async def send_hello(self, public_key):
+    async def send_hello(self, public_key, private_key):
         self.counter += 1
         
-        #Greg sign the message
-        #signature = sign_message(public_key)
-        signature = "signature"
+        message_data = json.dumps({
+            "type": "hello",
+            "public_key": public_key
+        })
+        
+        signature = self.encryption.sign_rsa(message_data.encode(), private_key)
         
         message = {
             "type": "signed_data",
@@ -34,7 +26,7 @@ class MessageHandler:
                 "public_key": public_key,
             },
             "counter": self.counter,
-            "signature": signature,
+            "signature": base64.b64encode(signature).decode()
         }
         json_message = json.dumps(message)
         await self.connection.send(json_message)
@@ -43,18 +35,26 @@ class MessageHandler:
     async def send_chat(self, message, destination_servers, iv, symmetric_keys, recipients_fingerprints):
         self.counter += 1
         
-        # Greg Encrypt this message
         chat = {
             "participants": recipients_fingerprints,
             "message": message
             
         }
-        #Base64 AES encrypted_message = encrypt_message(chat)
         
-        #Greg sign the message
-        #signature = sign_message(public_key)
-        signature = "signature"
-        encrypted_message = chat
+        aes_key = self.encryption.generate_aes_key()
+        encrypted_message, tag = self.encryption.encrypt_aes_gcm(json.dumps(chat).encode(), aes_key, iv)
+        encrypted_message_b64 = base64.b64encode(encrypted_message).decode()
+        symmetric_keys_b64 = base64.b64encode(aes_key).decode()  # Base64 encode symmetric key
+        
+        # Generate signature for the message
+        message_content = json.dumps({
+            "type": "chat",
+            "destination_servers": destination_servers,
+            "iv": base64.b64encode(iv).decode(),
+            "symmetric_key": symmetric_keys_b64,
+            "chat": encrypted_message_b64
+        })
+        signature = self.encryption.sign_rsa(message_content.encode(), private_key_pem)  # Replace `private_key_pem` with actual private key
         
         message = {
             "type": "signed_data",
@@ -78,8 +78,7 @@ class MessageHandler:
         #base64 encode the fingerprint
         encoded_fingerprint = base64.b64encode(sender_fingerprint)
         
-        #Greg sign the message
-        #signature = sign_message(public_key)
+    
         signature = "signature"
         
         message = {
@@ -96,14 +95,6 @@ class MessageHandler:
         await self.connection.send(json_message)
         print (f"Sent public message: {json_message}")
     
-    '''
-        
-    async def request_client_list(self):
-        #request a list of clients from the server
-        
-        pass
-        
-    '''
     
     async def receive_client_list(self):
         """
