@@ -2,7 +2,7 @@ import json
 import base64
 import asyncio
 from connect import WebSocketClient
-from security_module import Encryption
+from security.security_module import Encryption
 
 class Client:
     def __init__(self, server_address):
