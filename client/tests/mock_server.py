@@ -11,24 +11,20 @@ async def mock_server(websocket, path):
     try:
         async for message in websocket:
             print(f"Received message: {message}")
-            
-            # Broadcast the message to all connected clients
             await broadcast_message(message)
-    except websockets.exceptions.ConnectionClosed:
-        print(f"Client {websocket.remote_address} disconnected")
+    except websockets.exceptions.ConnectionClosed as e:
+        print(f"Client {websocket.remote_address} disconnected with exception: {e}")
     finally:
-        # Unregister the client when they disconnect
         connected_clients.remove(websocket)
 
 async def broadcast_message(message):
-    if connected_clients:  # Check if there are any connected clients
+    if connected_clients:
         tasks = [client.send(message) for client in connected_clients]
         await asyncio.gather(*tasks)
 
-# Start the server
 async def start_server():
-    server = await websockets.serve(mock_server, "localhost", 8765)
-    print("Server started on ws://localhost:8765")
+    server = await websockets.serve(mock_server, "localhost", 8000)
+    print("Server started on ws://localhost:8000")
     await server.wait_closed()
 
 asyncio.run(start_server())

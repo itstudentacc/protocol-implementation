@@ -1,4 +1,3 @@
-# connect.py
 import websockets
 import asyncio
 
@@ -13,23 +12,38 @@ class WebSocketClient:
             print(f"Connected to {self.server_address}")
         except Exception as e:
             print(f"Failed to connect: {e}")
+            self.connection = None  # Ensure connection is set to None on failure
             raise e
 
     async def close(self):
         if self.connection is not None:
-            await self.connection.close()
-            self.connection = None
-            print("Connection closed")
+            try:
+                await self.connection.close()
+                print("Connection closed")
+            except Exception as e:
+                print(f"Failed to close connection: {e}")
+            finally:
+                self.connection = None  # Ensure connection is reset
 
     async def send(self, message):
         if self.connection:
-            await self.connection.send(message)
+            try:
+                await self.connection.send(message)
+            except Exception as e:
+                print(f"Error sending message: {e}")
+                await self.close()  # Close connection on error
         else:
             raise RuntimeError("Connection not established.")
-    
+
     async def receive(self):
         if self.connection:
-            return await self.connection.recv()
+            try:
+                message = await self.connection.recv()
+                print(f"Received message: {message}")
+                return message
+            except Exception as e:
+                print(f"Error receiving message: {e}")
+                await self.close()  # Close connection on error
+                return None
         else:
             raise RuntimeError("Connection not established.")
-        
