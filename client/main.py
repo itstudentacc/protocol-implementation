@@ -1,27 +1,40 @@
 import asyncio
 from client import Client
 
-
 async def main():
     client = Client()
-    await client.connect()
+
+    try:
+        await client.connect()
+    except Exception as e:
+        print(f"Failed to connect to the server: {e}")
+        return  # Exit the program if connection fails
+
     await client.send_hello()
-    
+
     while True:
-        # Display a prompt and read user input
-        message = input("Enter your message type (or 'quit' to exit): ")
-        
-        if message.lower() == 'public':
-            await client.send_public_chat()
-        if message.lower() == 'chat':
-            # await client.send_chat()
-            break
-        if message.lower() == 'quit':
-            break
-    
-    await client.close()
-    
-    
+        try:
+            # Display a prompt and read user input
+            msg_type = input("Enter your message type ('public', 'private' or 'quit' to exit): ")
+
+            if msg_type == "public":
+                message = input("Enter your public message: ")
+                await client.send_public_chat(message)
+
+            elif msg_type == "private":
+                recipient_fingerprint = input("Enter recipient fingerprint: ")
+                chat_message = input("Enter your private message: ")
+                await client.send_private_chat(recipient_fingerprint, chat_message)
+
+            elif msg_type == "quit":
+                await client.close()
+                break
+
+            else:
+                print("Invalid message type. Please enter 'public', 'private', or 'quit'.")
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

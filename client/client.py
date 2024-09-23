@@ -108,27 +108,26 @@ class Client:
         self.counter += 1
         
         encoded_fingerprint = self.fingerprint(self.public_key)
-        
+            
         message_data = {
-            "type": "signed_data",
+            "type": "public_chat",
             "data": {
-                "type": "public_message",
                 "sender" : encoded_fingerprint,
                 "message": message
             },
             "counter": self.counter,
-            "signature": "",
         }
         
         
         # Create JSON and sign it
         message_json = json.dumps(message_data)
-        signature = self.encryption.sign_rsa(message_json.encode(), self.private_key)
-        message_data["signature"] = base64.b64encode(signature).decode()
         
         
-        await self.client.send(message_json)
-        print(f"Sent public message: {message}")
+        try:
+            await self.client.send(message_json)
+            print(f"Sent public message: {message}")
+        except Exception as e:
+            print(f"Error sending public message: {e}")
         
         
     async def receive_client_list(self):
@@ -185,7 +184,7 @@ class Client:
                     return base64.b64decode(client_public_key)
         return None
 
-    async def receive_public_message(self):
+    async def receive_public_chat(self):
         """
         Receives a public message.
         Expects a message in the format:
@@ -208,19 +207,9 @@ class Client:
             # Parse the message from JSON
             message = json.loads(raw_message)
             
-            if message["type"] != "signed_data" or message["data"]["type"] != "public_message":
+            if message["type"] != "public_chat":
                 raise ValueError("Invalid message type")
 
-            # Extract the sender's fingerprint and decode it to get the public key
-            sender_fingerprint = base64.b64decode(message["data"]["sender"])
-            public_message = message["data"]["message"]
-
-            # Validate message type
-            if message["type"] != "signed_data":
-                raise Exception("Invalid message type")
-
-            if message["data"]["type"] != "public_message":
-                raise Exception("Invalid message data type")
 
             # Extract sender and message
             decoded_sender = base64.b64decode(message["data"]["sender"]).decode("utf-8")
