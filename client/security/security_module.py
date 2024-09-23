@@ -115,7 +115,8 @@ class Encryption:
         )
         return signature
 
-    def encrypt_aes_gcm(self, plaintext: bytes, aes_key: bytes, iv: bytes) -> bytes:
+    # Encrypt symmetric key
+    def encrypt_aes_gcm(self, plaintext: bytes, aes_key: bytes, iv: bytes) -> tuple:
         """
         Encrypts plaintext using AES-GCM.
 
@@ -129,9 +130,29 @@ class Encryption:
         """
         cipher = Cipher(algorithms.AES(aes_key), modes.GCM(iv), backend=self.backend)
         encryptor = cipher.encryptor()
+        # Encrypt the data
         ciphertext = encryptor.update(plaintext) + encryptor.finalize()
-        return ciphertext
+        return ciphertext, encryptor.tag
+    
 
+    #decrypt symmetric key
+    def decrypt_aes_gcm(self, ciphertext: bytes, aes_key: bytes, iv: bytes, tag: bytes) -> bytes:
+        """
+        Decrypts ciphertext using AES-GCM.
+
+        Args:
+            ciphertext (bytes): Encrypted data.
+            aes_key (bytes): AES key.
+            iv (bytes): Initialization vector.
+
+        Returns:
+            bytes: Decrypted data.
+        """
+        cipher = Cipher(algorithms.AES(aes_key), modes.GCM(iv,tag), backend=self.backend)
+        decryptor = cipher.decryptor()
+        # Decrypt the data
+        plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+        return plaintext
     
     def generate_fingerprint(self, public_key):
         # Export the public key in PEM format

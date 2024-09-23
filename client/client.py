@@ -53,18 +53,26 @@ class Client:
         iv = self.encryption.generate_iv()
         symm_key = self.encryption.generate_aes_key()
         
-        encrypted_chat = self.encryption.encrypt_aes_gcm(chat_message.encode(), symm_key, iv)
+        encrypted_chat, tag = self.encryption.encrypt_aes_gcm(chat_message.encode(), symm_key, iv)
         
-        encrypted_symm_key = self.encryption.encrypt_rsa(symm_key, recipient_public_key)
-        
+        ## Send to recepient
+        # encrypted_symm_key = self.encryption.encrypt_rsa(symm_key, recipient_public_key)
+
+        # send to multiple recepients
+        encrypted_symm_keys = [ 
+            base64.b64encode(self.encryption.encrypt_rsa(symm_key, recipient_public_key)).decode()
+            for recipient_public_key in recipient_public_key
+        ]
+
         message = {
             "type": "signed_data",
             "data": {
                 "type": "chat",
                 "destination_servers": [],
                 "iv": base64.b64encode(iv).decode(),
-                "symm_keys": base64.b64encode(encrypted_symm_key).decode(),
-                "chat": base64.b64encode(encrypted_chat).decode()
+                "symm_keys": base64.b64encode(encrypted_symm_keys).decode(),
+                "chat": base64.b64encode(encrypted_chat).decode(),
+                "tag": base64.b64encode(tag).decode()
             },
             "counter": self.counter,
             "signature": ""
@@ -192,6 +200,57 @@ class Client:
 
         except Exception as e:
             print(f"Error receiving public message: {e}")
+            return None
+
+    async def receive_chat(self):
+        """
+        Receives a chat message.
+        Expects a message in the format:
+        {
+            "type": "signed_data",
+            "data": {
+                "type": "chat",
+                "destination_servers": [],
+                "iv": "<iv>",
+                "symm_keys": "<symm_keys>",
+                "chat": "<chat>"
+            },
+            "counter": "<counter>",
+            "signature": "<signature>"
+        }
+        """
+        try:
+            # Receive the raw message
+            raw_message = await self.client.receive()
+            print(f"Received raw message: {raw_message}")
+
+            # Parse the message from JSON
+            message = json.loads(raw_message)
+
+            # Validate message type
+            if message["type"] != "signed_data":
+                raise Exception("Invalid message type")
+
+            if message["data"]["type"] != "chat":
+                raise Exception("Invalid message data type")
+
+            # Extract message data
+            iv = base64.b64decode(message["data"]["iv"])
+            symm_keys = base64.b64decode(message["data"]["symm_keys"])
+            chat = base64.b64decode(message["data"]["chat"])
+            tag = base64.b64decode(message["data"]["tag"])
+
+            # Decrypt the symmetric key
+            symm_key = self.encryption.decrypt_rsa(symm_keys, self.private_key)
+
+            # Decrypt the chat message
+            decrypted_chat = self.encryption.decrypt_aes_gcm(chat, symm_key, iv, tag)
+
+            print(f"Decrypted chat message: {decrypted_chat.decode()}")
+            return decrypted_chat.decode()
+
+        except Exception as e:
+            print(f"Error receiving chat message: {e}")
             return None
 
 
