@@ -1,22 +1,40 @@
 import json
 import base64
 import asyncio
+import hashlib
 from connect import WebSocketClient
 from security.security_module import Encryption
 
 class Client:
-    def __init__(self, server_address):
+    def __init__(self):
+        self.server_address = "ws://localhost:8000"
         self.encryption = Encryption()
         self.counter = 0
-        self.client = WebSocketClient(server_address)
+        self.client = WebSocketClient(self.server_address)
         self.public_key, self.private_key = self.encryption.generate_rsa_key_pair()
+        self.client_list = []
         
 
+    def fingerprint(self, public_key):
+        """
+        Generates a fingerprint from a public key.
+        """
+        # Hash the public key using SHA-256
+        sha256_hash = hashlib.sha256(public_key).digest()
+        # Get the hexadecimal representation of the hash
+        return base64.b64encode(sha256_hash).decode()
+    
     async def connect(self):
-        # Await connection to WebSocket server
-        await self.client.connect()
-
+        try:
+            await self.client.connect()
+        except Exception as e:
+            print(f"Connection failed: {e}")
+            
+    async def close(self):
+        await self.client.close()
+    
     async def send_hello(self):
+        print("Sending hello message")
         self.counter += 1
 
         # Convert public_key to a base64 encoded string if it is in bytes format
@@ -44,8 +62,12 @@ class Client:
         }
 
         json_message = json.dumps(message)
-        await self.client.send(json_message)
-        print(f"Sent hello message: {json_message}")
+        
+        try:
+            await self.client.send(json_message)
+            print("Sent hello message")
+        except Exception as e:
+            print(f"Error sending hello message: {e}")
         
     async def send_chat(self, chat_message, recipient_public_key):
         self.counter += 1
@@ -70,40 +92,42 @@ class Client:
             "signature": ""
         }
         
-        message_json = json.dumps(message)
+        message_data = json.dumps(message["data"])
+        signature = self.encryption.sign_rsa(message_data.encode(), self.private_key)
         
-        signature = self.encryption.sign_rsa(message_json.encode(), self.private_key)
         message["signature"] = base64.b64encode(signature).decode()
         
         message_json = json.dumps(message)
-        
-        await self.client.send(message_json)
-        print(f"Sent chat message: {message_json}")
+        try:
+            await self.client.send(message_json)
+            print(f"Sent chat message: {message_json}")
+        except Exception as e:
+            print (f"Error sending chat message: {e}")
         
     async def send_public_chat(self, message):
         self.counter += 1
         
-        encoded_fingerprint = base64.b64encode(self.public_key).decode()
-        
-        message = {
-            "type": "signed_data",
+        encoded_fingerprint = self.fingerprint(self.public_key)
+            
+        message_data = {
+            "type": "public_chat",
             "data": {
-                "type": "public_message",
                 "sender" : encoded_fingerprint,
                 "message": message
             },
             "counter": self.counter,
-            "signature": "",
         }
-        message_json = json.dumps(message)
-        signature = self.encryption.sign_rsa(message_json.encode(), self.private_key)
-        
-        message["signature"] = base64.b64encode(signature).decode()
         
         
-        message_json = json.dumps(message)
-        await self.client.send(message_json)
-        print(f"Sent public message: {message_json}")
+        # Create JSON and sign it
+        message_json = json.dumps(message_data)
+        
+        
+        try:
+            await self.client.send(message_json)
+            print(f"Sent public message: {message}")
+        except Exception as e:
+            print(f"Error sending public message: {e}")
         
         
     async def receive_client_list(self):
@@ -149,8 +173,18 @@ class Client:
             print(f"Unexpected error: {e}")
             return None
     
+    def get_public_key(self, fingerprint, client_list):
+        """
+        Returns the public key associated with the given fingerprint.
+        """
+        for server in client_list:
+            for client_public_key in server["clients"]:
+                client_fingerprint = self.fingerprint_public_key(base64.b64decode(client_public_key))
+                if client_fingerprint == fingerprint:
+                    return base64.b64decode(client_public_key)
+        return None
 
-    async def receive_public_message(self):
+    async def receive_public_chat(self):
         """
         Receives a public message.
         Expects a message in the format:
@@ -172,16 +206,10 @@ class Client:
 
             # Parse the message from JSON
             message = json.loads(raw_message)
+            
+            if message["type"] != "public_chat":
+                raise ValueError("Invalid message type")
 
-            # Extract the sender's fingerprint and decode it to get the public key
-            sender_fingerprint = base64.b64decode(message["data"]["sender"])
-
-            # Validate message type
-            if message["type"] != "signed_data":
-                raise Exception("Invalid message type")
-
-            if message["data"]["type"] != "public_message":
-                raise Exception("Invalid message data type")
 
             # Extract sender and message
             decoded_sender = base64.b64decode(message["data"]["sender"]).decode("utf-8")
@@ -194,6 +222,6 @@ class Client:
             print(f"Error receiving public message: {e}")
             return None
 
-
+    
         
 
