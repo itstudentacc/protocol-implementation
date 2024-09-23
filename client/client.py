@@ -85,6 +85,7 @@ class Client:
             base64.b64encode(self.encryption.encrypt_rsa(symm_key, recipient_public_key)).decode()
             for recipient_public_key in recipient_public_key
         ]
+        
 
         message = {
             "type": "signed_data",
@@ -112,28 +113,38 @@ class Client:
         except Exception as e:
             print (f"Error sending chat message: {e}")
         
-    async def send_public_chat(self, message):
+    async def send_public_chat(self, chat):
         self.counter += 1
         
         encoded_fingerprint = self.fingerprint(self.public_key)
+
+        message_data = json.dumps({
+            "type": "public_message",
+            "sender": encoded_fingerprint,
+            "message": chat
+        })
+
+        # Sign the message data
+        signature = self.encryption.sign_rsa(message_data.encode(), self.private_key)
             
-        message_data = {
-            "type": "public_chat",
+        message = {
+            "type": "signed_data",
             "data": {
+                "type": "public_chat",
                 "sender" : encoded_fingerprint,
-                "message": message
+                "message": chat
             },
             "counter": self.counter,
+            "signature": base64.b64encode(signature).decode()
         }
         
-        
         # Create JSON and sign it
-        message_json = json.dumps(message_data)
+        message_json = json.dumps(message)
         
         
         try:
             await self.client.send(message_json)
-            print(f"Sent public message: {message}")
+            print(f"Sent public message: {chat}")
         except Exception as e:
             print(f"Error sending public message: {e}")
         
