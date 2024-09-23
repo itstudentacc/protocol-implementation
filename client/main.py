@@ -6,9 +6,9 @@ async def main():
 
     try:
         await client.connect()
-    except Exception as e:
-        print(f"Failed to connect to the server: {e}")
-        return  # Exit the program if connection fails
+    except ValueError as e:
+        print(f"Failed to connect: {e}")
+        return
 
     await client.send_hello()
 
