@@ -1,21 +1,26 @@
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
-from cryptography.exceptions import InvalidSignature
-import base64
 import hashlib
 import os
 
+#Constant
+KEY_SIZE_RSA = 2048
+PUBLIC_EXPONENT = 65537
+IV_SIZE = 16
+KEY_LENGTH = 32
+
 class Encryption:
+    # define self
     def __init__(self):
         self.backend = default_backend()
 
+    # generate private and public key
     def generate_rsa_key_pair(self):
         private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
+            public_exponent= PUBLIC_EXPONENT,
+            key_size= KEY_SIZE_RSA,
             backend=self.backend
         )
         public_key = private_key.public_key()
@@ -34,13 +39,16 @@ class Encryption:
 
         return pem_public_key, pem_private_key
 
-    def generate_aes_key(self, key_length=32):
-        return os.urandom(key_length)
+    # Generate random AES key
+    def generate_aes_key(key_length):
+        return os.urandom(KEY_LENGTH)
 
-    def generate_iv(self):
-        return os.urandom(16)
+    # Generate random IV
+    def generate_iv():
+        return os.urandom(IV_SIZE)
 
-    def encrypt_rsa(self, plaintext: bytes, public_key_pem: bytes) -> bytes:
+    # 
+    def encrypt_rsa(self, plaintext, public_key_pem):
         """
         Encrypts plaintext using RSA public key.
 
@@ -65,7 +73,7 @@ class Encryption:
         )
         return ciphertext
 
-    def decrypt_rsa(self, ciphertext: bytes, private_key_pem: bytes) -> bytes:
+    def decrypt_rsa(self, ciphertext, private_key_pem):
         """
         Decrypts ciphertext using RSA private key.
 
@@ -90,7 +98,7 @@ class Encryption:
         )
         return plaintext
 
-    def sign_rsa(self, message: bytes, private_key_pem: bytes) -> bytes:
+    def sign_rsa(self, message, private_key_pem):
         """
         Signs a message using RSA private key.
 
@@ -116,7 +124,7 @@ class Encryption:
         return signature
 
     # Encrypt symmetric key
-    def encrypt_aes_gcm(self, plaintext: bytes, aes_key: bytes, iv: bytes) -> tuple:
+    def encrypt_aes_gcm(self, plaintext, aes_key, iv):
         """
         Encrypts plaintext using AES-GCM.
 
@@ -136,7 +144,7 @@ class Encryption:
     
 
     #decrypt symmetric key
-    def decrypt_aes_gcm(self, ciphertext: bytes, aes_key: bytes, iv: bytes, tag: bytes) -> bytes:
+    def decrypt_aes_gcm(self, ciphertext, aes_key, iv, tag):
         """
         Decrypts ciphertext using AES-GCM.
 
@@ -154,13 +162,15 @@ class Encryption:
         plaintext = decryptor.update(ciphertext) + decryptor.finalize()
         return plaintext
     
-    def generate_fingerprint(self, public_key):
-        # Export the public key in PEM format
-        
-        # Compute the SHA-256 hash of the PEM-encoded public key
-        return hashlib.sha256(public_key).digest()
-    
-    
+    def generate_fingerprint(self, public_key_pem):
+        public_key = serialization.load_pem_public_key(public_key_pem, backend=self.backend)
+        public_key_bytes = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        fingerprint = hashlib.sha256(public_key_bytes).hexdigest()
+        return fingerprint
+
     def validate_signature(self, message, signature, public_key_pem):
         try:
             # Load public key
