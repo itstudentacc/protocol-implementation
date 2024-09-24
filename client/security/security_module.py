@@ -11,6 +11,8 @@ PUBLIC_EXPONENT = 65537
 IV_SIZE = 16
 KEY_LENGTH = 32
 
+
+# Make class Encryption with cryptographic functions
 class Encryption:
     # define self
     def __init__(self):
@@ -47,18 +49,8 @@ class Encryption:
     def generate_iv():
         return os.urandom(IV_SIZE)
 
-    # 
+    # Encrypt data using RSA
     def encrypt_rsa(self, plaintext, public_key_pem):
-        """
-        Encrypts plaintext using RSA public key.
-
-        Args:
-            plaintext (bytes): Data to be encrypted.
-            public_key_pem (bytes): Public key in PEM format.
-
-        Returns:
-            bytes: Encrypted data.
-        """
         # Load public key
         public_key = serialization.load_pem_public_key(public_key_pem, backend=self.backend)
 
@@ -73,17 +65,8 @@ class Encryption:
         )
         return ciphertext
 
+    # Decrypt data using RSA
     def decrypt_rsa(self, ciphertext, private_key_pem):
-        """
-        Decrypts ciphertext using RSA private key.
-
-        Args:
-            ciphertext (bytes): Encrypted data.
-            private_key_pem (bytes): Private key in PEM format.
-
-        Returns:
-            bytes: Decrypted data.
-        """
         # Load private key
         private_key = serialization.load_pem_private_key(private_key_pem, password=None, backend=self.backend)
 
@@ -97,18 +80,26 @@ class Encryption:
             )
         )
         return plaintext
+    
+    # Encrypt symmetric key
+    def encrypt_aes_gcm(self, plaintext, aes_key, iv):
+        cipher = Cipher(algorithms.AES(aes_key), modes.GCM(iv), backend=self.backend)
+        encryptor = cipher.encryptor()
+        # Encrypt the data
+        ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+        return ciphertext, encryptor.tag
+    
 
-    def sign_rsa(self, message, private_key_pem):
-        """
-        Signs a message using RSA private key.
+    # Decrypt symmetric key
+    def decrypt_aes_gcm(self, ciphertext, aes_key, iv, tag):
+        cipher = Cipher(algorithms.AES(aes_key), modes.GCM(iv,tag), backend=self.backend)
+        decryptor = cipher.decryptor()
+        # Decrypt the data
+        plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+        return plaintext
 
-        Args:
-            message (bytes): Message to be signed.
-            private_key_pem (bytes): Private key in PEM format.
-
-        Returns:
-            bytes: Signature.
-        """
+    # Sign messages
+    def sign_message(self, message, private_key_pem):
         # Load private key
         private_key = serialization.load_pem_private_key(private_key_pem, password=None, backend=self.backend)
 
@@ -122,46 +113,8 @@ class Encryption:
             hashes.SHA256()
         )
         return signature
-
-    # Encrypt symmetric key
-    def encrypt_aes_gcm(self, plaintext, aes_key, iv):
-        """
-        Encrypts plaintext using AES-GCM.
-
-        Args:
-            plaintext (bytes): Data to be encrypted.
-            aes_key (bytes): AES key.
-            iv (bytes): Initialization vector.
-
-        Returns:
-            bytes: Ciphertext.
-        """
-        cipher = Cipher(algorithms.AES(aes_key), modes.GCM(iv), backend=self.backend)
-        encryptor = cipher.encryptor()
-        # Encrypt the data
-        ciphertext = encryptor.update(plaintext) + encryptor.finalize()
-        return ciphertext, encryptor.tag
     
-
-    #decrypt symmetric key
-    def decrypt_aes_gcm(self, ciphertext, aes_key, iv, tag):
-        """
-        Decrypts ciphertext using AES-GCM.
-
-        Args:
-            ciphertext (bytes): Encrypted data.
-            aes_key (bytes): AES key.
-            iv (bytes): Initialization vector.
-
-        Returns:
-            bytes: Decrypted data.
-        """
-        cipher = Cipher(algorithms.AES(aes_key), modes.GCM(iv,tag), backend=self.backend)
-        decryptor = cipher.decryptor()
-        # Decrypt the data
-        plaintext = decryptor.update(ciphertext) + decryptor.finalize()
-        return plaintext
-    
+    # Calculate fingerprint using public key
     def generate_fingerprint(self, public_key_pem):
         public_key = serialization.load_pem_public_key(public_key_pem, backend=self.backend)
         public_key_bytes = public_key.public_bytes(
@@ -171,6 +124,7 @@ class Encryption:
         fingerprint = hashlib.sha256(public_key_bytes).hexdigest()
         return fingerprint
 
+    # Verify signature using RSA-PSS
     def validate_signature(self, message, signature, public_key_pem):
         try:
             # Load public key

@@ -46,7 +46,7 @@ class Client:
         })
 
         # Sign the message data
-        signature = self.encryption.sign_rsa(message_data.encode(), self.private_key)
+        signature = self.encryption.sign_message(message_data.encode(), self.private_key)
 
         # Convert signature to a base64 encoded string
         signature_base64 = base64.b64encode(signature).decode()
@@ -102,7 +102,7 @@ class Client:
         }
         
         message_data = json.dumps(message["data"])
-        signature = self.encryption.sign_rsa(message_data.encode(), self.private_key)
+        signature = self.encryption.sign_message(message_data.encode(), self.private_key)
         
         message["signature"] = base64.b64encode(signature).decode()
         
@@ -125,7 +125,7 @@ class Client:
         })
 
         # Sign the message data
-        signature = self.encryption.sign_rsa(message_data.encode(), self.private_key)
+        signature = self.encryption.sign_message(message_data.encode(), self.private_key)
             
         message = {
             "type": "signed_data",
