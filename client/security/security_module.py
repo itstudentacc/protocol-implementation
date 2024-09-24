@@ -42,11 +42,11 @@ class Encryption:
         return pem_public_key, pem_private_key
 
     # Generate random AES key
-    def generate_aes_key(key_length):
+    def generate_aes_key(self):
         return os.urandom(KEY_LENGTH)
 
     # Generate random IV
-    def generate_iv():
+    def generate_iv(self):
         return os.urandom(IV_SIZE)
 
     # Encrypt data using RSA
