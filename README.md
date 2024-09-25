@@ -1,4 +1,4 @@
-# Group 17 Olaf Implementation
+# Group 17 OLAF Protocol Implementation
 
 ## SERVER
 
