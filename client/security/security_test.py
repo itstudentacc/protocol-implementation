@@ -1,11 +1,10 @@
 import unittest
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-import os
+from cryptography.hazmat.primitives import serialization, hashes, padding
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
+import os
 
-# Assuming the Encryption class is in a module named `encryption_module`
+# Assuming the Encryption class is in a module named `security_module`
 from security_module import Encryption
 
 class TestEncryption(unittest.TestCase):
@@ -13,8 +12,8 @@ class TestEncryption(unittest.TestCase):
     def setUp(self):
         self.encryption = Encryption()
         self.public_key, self.private_key = self.encryption.generate_rsa_key_pair()
-        self.aes_key = self.encryption.generate_aes_key()
-        self.iv = self.encryption.generate_iv()
+        self.aes_key = self.encryption.generate_aes_key()  # Fixed: no argument passed
+        self.iv = self.encryption.generate_iv()  # Fixed: no argument passed
 
     def test_rsa_key_generation(self):
         # Test RSA key pair generation
@@ -36,44 +35,31 @@ class TestEncryption(unittest.TestCase):
         plaintext = b"Secret Message"
         ciphertext = self.encryption.encrypt_rsa(plaintext, self.public_key)
         
-        # Load private key for decryption
-        private_key = serialization.load_pem_private_key(self.private_key, password=None, backend=default_backend())
-        
-        decrypted_message = private_key.decrypt(
-            ciphertext,
-            padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
-        )
+        # Use the decrypt_rsa method from Encryption class
+        decrypted_message = self.encryption.decrypt_rsa(ciphertext, self.private_key)
         self.assertEqual(plaintext, decrypted_message)
 
     def test_rsa_signing_verification(self):
         # Test RSA signing and verification
         message = b"Secret Message"
-        signature = self.encryption.sign_rsa(message, self.private_key)
+        signature = self.encryption.sign_message(message, self.private_key)
         
-        # Load public key for verification
-        public_key = serialization.load_pem_public_key(self.public_key, backend=default_backend())
-        
-        try:
-            public_key.verify(
-                signature,
-                message,
-                padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA256()),
-                    salt_length=32
-                ),
-                hashes.SHA256()
-            )
-        except Exception as e:
-            self.fail(f"Verification failed: {str(e)}")
+        # Use validate_signature method from Encryption class to verify
+        is_valid = self.encryption.validate_signature(message, signature, self.public_key)
+        self.assertTrue(is_valid)
 
-    def test_aes_gcm_encryption(self):
-        # Test AES-GCM encryption
+    def test_aes_gcm_encryption_decryption(self):
+        # Test AES-GCM encryption and decryption
         plaintext = b"Secret Message"
         ciphertext, tag = self.encryption.encrypt_aes_gcm(plaintext, self.aes_key, self.iv)
         self.assertIsInstance(ciphertext, bytes)
         self.assertIsInstance(tag, bytes)
         self.assertGreater(len(ciphertext), 0)
         self.assertEqual(len(tag), 16)
+
+        # Test AES-GCM decryption
+        decrypted_message = self.encryption.decrypt_aes_gcm(ciphertext, self.aes_key, self.iv, tag)
+        self.assertEqual(plaintext, decrypted_message)
 
 if __name__ == '__main__':
     unittest.main()

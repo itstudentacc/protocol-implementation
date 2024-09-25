@@ -1,297 +1,287 @@
 import json
 import base64
 import asyncio
-import hashlib
-from connect import WebSocketClient
+import aioconsole
+import websockets
 from security.security_module import Encryption
 
-class Client:
-    def __init__(self):
-        self.server_address = "ws://localhost:8000"
-        self.encryption = Encryption()
-        self.counter = 0
-        self.client = WebSocketClient(self.server_address)
-        self.public_key, self.private_key = self.encryption.generate_rsa_key_pair()
-        self.client_list = []
-        
 
-    def fingerprint(self, public_key):
-        """
-        Generates a fingerprint from a public key.
-        """
-        # Hash the public key using SHA-256
-        sha256_hash = hashlib.sha256(public_key).digest()
-        # Get the hexadecimal representation of the hash
-        return base64.b64encode(sha256_hash).decode()
+class Client:
+    def __init__(self, server_address="ws://localhost:8000"):
+        self.server_address = server_address
+        self.encryption = Encryption()
+        self.connection = None
+        self.counter = 0
+        self.last_counters = {}
+        self.received_messages = []  # Fixed typo
+        self.clients = {}
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        
+    async def start(self):
+        # Generate RSA key pair
+        self.public_key, self.private_key = self.encryption.generate_rsa_key_pair()
+
+        await self.connect()
+        await self.input_prompt()
+        self.loop.run_forever()
+
+    def parse_message(self, message):
+        try:
+            message_dict = json.loads(message)
+            return message_dict, None
+        except json.JSONDecodeError as e:
+            return None, f"Error parsing JSON: {str(e)}"
+
+    def build_signed_data(self, data):
+        message = {
+            "data": data,
+            "counter": self.counter
+        }
+
+        message_json = json.dumps(message, separators=(',', ':'), sort_keys=True)
+        message_bytes = message_json.encode('utf-8')
+
+        # Sign the message
+        signature = self.encryption.sign_rsa(message_bytes, self.private_key)
+        signature_base64 = base64.b64encode(signature).decode('utf-8')
+
+        # Prepare the signed message
+        signed_data = {
+            "type": "signed_data",
+            "data": data,
+            "counter": self.counter,
+            "signature": signature_base64
+        }
+
+        return signed_data
     
+    async def input_prompt(self):
+        while True:
+            message = await aioconsole.ainput("Enter message type (public, chat, clients): ")
+            if message == "public":
+                chat = await aioconsole.ainput("Enter public chat message: ")
+                await self.send_public_chat(chat)
+            elif message == "chat":
+                recipients = await aioconsole.ainput("Enter recipients separated by commas: ")
+                chat = await aioconsole.ainput("Enter chat message: ")
+                await self.send_chat(recipients.split(','), chat)
+            elif message == "clients":
+                await self.request_client_list()
+            elif message == "exit":
+                await self.close()
+                break
+            else:
+                print("Invalid message type")
     async def connect(self):
         try:
-            await self.client.connect()
+            self.connection = await websockets.connect(self.server_address)
+            print(f"Connected to {self.server_address}")
+
+            await self.send_hello()
+
+            # Listen for incoming messages
+            asyncio.ensure_future(self.receive())
+
         except Exception as e:
-            print(f"Connection failed: {e}")
-            
+            print(f"Failed to connect: {e}")
+
     async def close(self):
-        await self.client.close()
-    
+        if self.connection:
+            try:
+                await self.connection.close()
+                print("Connection closed")
+            except Exception as e:
+                print(f"Failed to close connection: {e}")
+            finally:
+                self.connection = None
+
     async def send_hello(self):
-        print("Sending hello message")
         self.counter += 1
+        public_key_base64 = base64.b64encode(self.public_key).decode('utf-8')
 
-        # Convert public_key to a base64 encoded string if it is in bytes format
-        public_key_base64 = base64.b64encode(self.public_key).decode()
-
-        message_data = json.dumps({
+        message_data = {
             "type": "hello",
             "public_key": public_key_base64  # Use base64 encoded public_key
-        })
-
-        # Sign the message data
-        signature = self.encryption.sign_rsa(message_data.encode(), self.private_key)
-
-        # Convert signature to a base64 encoded string
-        signature_base64 = base64.b64encode(signature).decode()
-
-        message = {
-            "type": "signed_data",
-            "data": {
-                "type": "hello",
-                "public_key": public_key_base64,  # Use base64 encoded public_key
-            },
-            "counter": self.counter,
-            "signature": signature_base64  # Use base64 encoded signature
         }
+
+        message = self.build_signed_data(message_data)
 
         json_message = json.dumps(message)
-        
-        try:
-            await self.client.send(json_message)
-            print("Sent hello message")
-        except Exception as e:
-            print(f"Error sending hello message: {e}")
-        
-    async def send_chat(self, chat_message, recipient_public_key):
-        self.counter += 1
+        await self.connection.send(json_message)
+        print(f"Sent hello message")
 
-        iv = self.encryption.generate_iv()
-        symm_key = self.encryption.generate_aes_key()
-        
-        encrypted_chat, tag = self.encryption.encrypt_aes_gcm(chat_message.encode(), symm_key, iv)
-        
-        ## Send to recepient
-        # encrypted_symm_key = self.encryption.encrypt_rsa(symm_key, recipient_public_key)
-
-        # send to multiple recepients
-        encrypted_symm_keys = [ 
-            base64.b64encode(self.encryption.encrypt_rsa(symm_key, recipient_public_key)).decode()
-            for recipient_public_key in recipient_public_key
-        ]
-        
-
-        message = {
-            "type": "signed_data",
-            "data": {
-                "type": "chat",
-                "destination_servers": [],
-                "iv": base64.b64encode(iv).decode(),
-                "symm_keys": base64.b64encode(encrypted_symm_keys).decode(),
-                "chat": base64.b64encode(encrypted_chat).decode(),
-                "tag": base64.b64encode(tag).decode()
-            },
-            "counter": self.counter,
-            "signature": ""
-        }
-        
-        message_data = json.dumps(message["data"])
-        signature = self.encryption.sign_rsa(message_data.encode(), self.private_key)
-        
-        message["signature"] = base64.b64encode(signature).decode()
-        
-        message_json = json.dumps(message)
-        try:
-            await self.client.send(message_json)
-            print(f"Sent chat message: {message_json}")
-        except Exception as e:
-            print (f"Error sending chat message: {e}")
-        
     async def send_public_chat(self, chat):
         self.counter += 1
         
-        encoded_fingerprint = self.fingerprint(self.public_key)
+        fingerprint = self.encryption.generate_fingerprint(self.private_key.public_key())
 
-        message_data = json.dumps({
-            "type": "public_message",
-            "sender": encoded_fingerprint,
+        message_data = {
+            "type": "public_chat",
+            "sender": fingerprint,
+            "message": chat
+        }
+
+        message = self.build_signed_data(message_data)
+
+        message_json = json.dumps(message)
+        await self.send(message_json)
+        print(f"Sent public message: {message_json}")
+
+    async def send_chat(self, recipients, chat):
+        recipient_public_keys = [self.clients[fingerprint] for fingerprint in recipients if fingerprint in self.clients]
+        destination_servers = [self.server_address]
+        self.counter += 1
+
+        # Generate AES key and IV
+        aes_key = self.encryption.generate_aes_key()
+        iv = self.encryption.generate_aes_iv()
+        iv_base64 = base64.b64encode(iv).decode('utf-8')
+
+        sender_fingerprint = self.encryption.generate_fingerprint(self.private_key.public_key())
+        participants = [sender_fingerprint] + [self.encryption.generate_fingerprint(public_key) for public_key in recipient_public_keys]
+
+        # Prepare the message data
+        message_data = {
+            "participants": participants,
+            "message": chat
+        }
+
+        message_json = json.dumps(message_data)
+
+        # Encrypt the chat message using AES-GCM
+        ciphertext = self.encryption.encrypt_aes_gcm(message_json.encode('utf-8'), aes_key, iv)
+        chat_base64 = base64.b64encode(ciphertext).decode('utf-8')
+
+        # Encrypt AES key for each recipient
+        symm_keys = []
+        for recipient_public_key in recipient_public_keys:
+            encrypted_key = self.encryption.encrypt_rsa(aes_key, recipient_public_key)
+            encrypted_key_base64 = base64.b64encode(encrypted_key).decode('utf-8')
+            symm_keys.append(encrypted_key_base64)
+
+        # Build the final chat message with encrypted components
+        data = {
+            "type": "chat",
+            "destination_servers": destination_servers,
+            "iv": iv_base64,
+            "symm_keys": symm_keys,
+            "chat": chat_base64
+        }
+
+        signed_message = self.build_signed_data(data)
+
+        message_json = json.dumps(signed_message)
+        await self.send(message_json)
+        print(f"Sent chat message: {chat}")
+
+    async def request_client_list(self):
+        message = {
+            "type": "client_list_request"
+        }
+
+        message_json = json.dumps(message)
+        await self.send(message_json)
+        print("Sent client list request")
+
+    async def receive(self):
+        try:
+            async for message in self.connection:
+                message_dict, error = self.parse_message(message)
+                if error:
+                    print(f"Error parsing message: {error}")
+                    continue
+
+                await self.handle_message(message_dict)
+        except websockets.ConnectionClosed:
+            print("Connection closed")
+
+    async def handle_message(self, message):
+        print(f"Received message")
+
+        message_type = message.get("type") or message.get("data", {}).get("type")
+        
+        if message_type == "signed_data":
+            message_type = message.get("data", {}).get("type")
+
+        if message_type == "public_chat":
+            await self.handle_public_chat(message)
+        elif message_type == "client_list":
+            await self.handle_client_list(message)
+        elif message_type == "chat":
+            await self.handle_chat(message)
+        else:
+            print(f"Unknown message type: {message_type}")
+
+    async def handle_public_chat(self, message):
+        sender_fingerprint = message.get("sender")
+        chat = message.get("message")
+        self.received_messages.append({
+            "sender": sender_fingerprint,
             "message": chat
         })
+        print(f"Public chat from {sender_fingerprint}: {chat}")
 
-        # Sign the message data
-        signature = self.encryption.sign_rsa(message_data.encode(), self.private_key)
-            
-        message = {
-            "type": "signed_data",
-            "data": {
-                "type": "public_chat",
-                "sender" : encoded_fingerprint,
-                "message": chat
-            },
-            "counter": self.counter,
-            "signature": base64.b64encode(signature).decode()
-        }
-        
-        # Create JSON and sign it
-        message_json = json.dumps(message)
-        
-        
+    async def handle_client_list(self, message):
+        servers = message.get("servers", [])
+        for server in servers:
+            clients = server.get("clients", [])
+            for client in clients:
+                fingerprint = client.get("fingerprint")
+                public_key_base64 = client.get("public_key")
+                public_key = base64.b64decode(public_key_base64)
+                self.clients[fingerprint] = public_key
+        print(f"Received client list: {self.clients}")
+
+    async def handle_chat(self, message):
+        symm_keys = message.get("symm_keys", [])
+        iv_base64 = message.get("iv")
+        chat_base64 = message.get("chat")
+
+        if not symm_keys or not iv_base64 or not chat_base64:
+            print("Invalid chat message")
+            return
+
+        iv = base64.b64decode(iv_base64.encode('utf-8'))
+        cipher_tag = base64.b64decode(chat_base64.encode('utf-8'))
+        ciphertext = cipher_tag[:-16]
+        tag = cipher_tag[-16:]
+
+        for symm_key_base64 in symm_keys:
+            symm_key_encrypted = base64.b64decode(symm_key_base64.encode('utf-8'))
+            try:
+                symm_key = self.encryption.decrypt_rsa(symm_key_encrypted, self.private_key)
+                plaintext_bytes = self.encryption.decrypt_aes_gcm(ciphertext, symm_key, iv, tag)
+                chat = json.loads(plaintext_bytes.decode('utf-8'))
+
+                participants = chat.get("participants", [])
+                if self.encryption.generate_fingerprint(self.public_key) in participants:
+                    sender_fingerprint = participants[0]
+                    chat_message = chat.get("message")
+                    self.received_messages.append({
+                        "sender": sender_fingerprint,
+                        "message": chat_message
+                    })
+                    print(f"Chat from {sender_fingerprint}: {chat_message}")
+                    return
+            except Exception as e:
+                print(f"Failed to decrypt chat: {e}")
+        print("Failed to decrypt chat")
+
+    async def send(self, message_json):
         try:
-            await self.client.send(message_json)
-            print(f"Sent public message: {chat}")
+            await self.connection.send(message_json)
         except Exception as e:
-            print(f"Error sending public message: {e}")
-        
-        
-    async def receive_client_list(self):
-        """
-        Receives a list of clients from the server.
-        Expected format:
-        {
-            "type": "client_list",
-            "servers": [
-                {
-                    "address": "<server_address>",
-                    "clients": [
-                        "<exported RSA public key of client>",
-                    ]
-                },
-            ]
-        }
-        """
-        try:
-            # Receive raw message from WebSocket
-            raw_message = await self.client.receive()
-            print(f"Received raw message: {raw_message}")
+            print(f"Error sending message: {e}")
 
-            # Parse JSON message
-            message = json.loads(raw_message)
-        
-            # Validate message type
-            if message.get("type") == "client_list":
-                # Extract and print client list
-                client_list = message.get("servers", [])
-                print(f"Received client list: {client_list}")
-                return client_list
-            else:
-                raise ValueError("Received message is not a client list")
+
+client = Client()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(client.start())
+    except KeyboardInterrupt:
+        print("Exiting...")
+        asyncio.run(client.close())
     
-        except json.JSONDecodeError as e:
-            print(f"Error parsing client list JSON: {e}")
-            return None
-        except ValueError as e:
-            print(f"Value error: {e}")
-            return None
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            return None
     
-    def get_public_key(self, fingerprint, client_list):
-        """
-        Returns the public key associated with the given fingerprint.
-        """
-        for server in client_list:
-            for client_public_key in server["clients"]:
-                client_fingerprint = self.fingerprint_public_key(base64.b64decode(client_public_key))
-                if client_fingerprint == fingerprint:
-                    return base64.b64decode(client_public_key)
-        return None
-
-    async def receive_public_chat(self):
-        """
-        Receives a public message.
-        Expects a message in the format:
-        {
-            "type": "signed_data",
-            "data": {
-                "type": "public_message",
-                "sender": "<encoded_fingerprint>",
-                "message": "<message>"
-            },
-            "counter": "<counter>",
-            "signature": "<signature>"
-        }
-        """
-        try:
-            # Receive the raw message
-            raw_message = await self.client.receive()
-            print(f"Received raw message: {raw_message}")
-
-            # Parse the message from JSON
-            message = json.loads(raw_message)
-            
-            if message["type"] != "public_chat":
-                raise ValueError("Invalid message type")
-
-
-            # Extract sender and message
-            decoded_sender = base64.b64decode(message["data"]["sender"]).decode("utf-8")
-            public_message = message["data"]["message"]
-
-            print(f"Public message from {decoded_sender}: {public_message}")
-            return public_message
-
-        except Exception as e:
-            print(f"Error receiving public message: {e}")
-            return None
-
-
-    async def receive_chat(self):
-        """
-        Receives a chat message.
-        Expects a message in the format:
-        {
-            "type": "signed_data",
-            "data": {
-                "type": "chat",
-                "destination_servers": [],
-                "iv": "<iv>",
-                "symm_keys": "<symm_keys>",
-                "chat": "<chat>"
-            },
-            "counter": "<counter>",
-            "signature": "<signature>"
-        }
-        """
-        try:
-            # Receive the raw message
-            raw_message = await self.client.receive()
-            print(f"Received raw message: {raw_message}")
-
-            # Parse the message from JSON
-            message = json.loads(raw_message)
-
-            # Validate message type
-            if message["type"] != "signed_data":
-                raise Exception("Invalid message type")
-
-            if message["data"]["type"] != "chat":
-                raise Exception("Invalid message data type")
-
-            # Extract message data
-            iv = base64.b64decode(message["data"]["iv"])
-            symm_keys = base64.b64decode(message["data"]["symm_keys"])
-            chat = base64.b64decode(message["data"]["chat"])
-            tag = base64.b64decode(message["data"]["tag"])
-
-            # Decrypt the symmetric key
-            symm_key = self.encryption.decrypt_rsa(symm_keys, self.private_key)
-
-            # Decrypt the chat message
-            decrypted_chat = self.encryption.decrypt_aes_gcm(chat, symm_key, iv, tag)
-
-            print(f"Decrypted chat message: {decrypted_chat.decode()}")
-            return decrypted_chat.decode()
-
-        except Exception as e:
-            print(f"Error receiving chat message: {e}")
-            return None
-
-        
-
