@@ -7,7 +7,7 @@ from security.security_module import Encryption
 
 
 class Client:
-    def __init__(self, server_address="ws://localhost:8000"):
+    def __init__(self, server_address="ws://localhost:9000"):
         self.server_address = server_address
         self.encryption = Encryption()
         self.connection = None
