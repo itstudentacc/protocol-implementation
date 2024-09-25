@@ -25,39 +25,10 @@ class OlafServerConnection(ConnectionHandler):
         self.server_addr = server_addr
         self.public_key = public_key
 
-    async def handler(self, data: dict) -> None:
-        """Handles Messages incoming (from servers)"""
-        msg_type = data["type"]
-        match msg_type:
-            case "client_update_request":
-                pass
-            case "client_update":
-                pass
-            case _:
-                error_msg = {
-                    "error" : "Invalid message type"
-                }
-                await self.send(error_msg)
-
 class OlafClientConnection(ConnectionHandler):
     def __init__(self, websocket: ServerConnection, public_key: str):
         self.websocket = websocket
         self.public_key = public_key
-
-    async def handler(self, data: dict) -> None:
-        """Handles messages outgoing (from clients)"""
-        msg_type = data["type"]
-        match msg_type:
-            case "signed_data":
-                self.counter += 1
-                pass
-            case "client_list_request":
-                pass
-            case _:
-                error_msg = {
-                    "error" : "Invalid message type"
-                }
-                await self.send(error_msg)
 
 class WebSocketServer():
     def __init__(self, host: str ='', port: int =8000, neighbours: dict[str,str] = {}, public_key: str = "default_public_key"):
@@ -117,6 +88,7 @@ class WebSocketServer():
                 break
             except websockets.exceptions.ConnectionClosed as conn_closed:
                 print(str(conn_closed))
+                print('line 91')
                 # Remove from clients / neighbours list
                 await self.disconnect(websocket)
         
@@ -145,6 +117,8 @@ class WebSocketServer():
             elif conn in self.neighbour_connections:
                 self.neighbour_connections.remove(conn)
                 print(f"Neighbour {conn.public_key} removed.")
+
+        await websocket.close(code=1000)
 
 
     
@@ -217,6 +191,7 @@ class WebSocketServer():
             case "client_update_request":
                 await self.client_update_request_handler(websocket)
             case _:
+
                 print("Unknown entity trying to communicate.")
                 err_msg = {
                     "error" : "Connection must be established with hello / hello_server message first."
@@ -225,6 +200,14 @@ class WebSocketServer():
     
     async def client_list_request_handler(self, websocket: ServerConnection) -> None:
         """Generates a client list and sends to the websocket that requested it."""
+
+        if not self.existing_connection(websocket):
+            err_msg = {
+                "error" : "Must establish connection first before asking for client list"
+            }
+            await self.send(websocket, err_msg)
+            await websocket.close(code=1000)
+            return
 
         # Generate client list
         all_clients = []
@@ -308,26 +291,52 @@ class WebSocketServer():
 
     async def signed_data_handler(self, websocket: ServerConnection, message: dict) -> None:
         """Handles all signed_data"""
+        try:
+            signed_data = message['data']
+            signed_data_type = signed_data['type']
 
-        signed_data = message['data']
-        signed_data_type = signed_data['type']
+        except KeyError:
+            err_msg = {
+                "error" : "Invalid signed_data format"
+            }
+            await self.send(websocket, err_msg)
+            await websocket.close(code=100)
+            return
 
+        
+        if not self.existing_connection(websocket):
+            match signed_data_type:
+                case "server_hello":
+                    await self.signed_data_handler_hello_server(websocket, message)
+
+                case "hello":
+                    await self.signed_data_handler_hello(websocket, message)
+
+                case _:
+
+                    err_msg = {
+                        "error" : "Please send a hello message first to establish connection"
+                    }
+
+                    await self.send(websocket, err_msg)
+                    await websocket.close(code=1000)
+            return
+
+        
         # Handle each type of signed_data
         match signed_data_type:
             case "chat":
                 # Route message to destination server
                 await self.relay_chat(websocket,message)
-            case "hello":
-                # Handle new client
-                await self.signed_data_handler_hello(websocket, signed_data)
             case "public_chat":
                 # Broadcast to all clients.
                 await self.relay_public_chat(websocket, message)
-            case "server_hello":
-                # Handle new server
-                await self.signed_data_handler_hello_server(websocket, signed_data)
             case _:
-                print(f"Unknown signed datat type: {signed_data_type}")
+                err_msg = {
+                    "error" : "Invalid data type from established connection"
+                }
+                await self.send(websocket, err_msg)
+
 
     async def relay_chat(self, websocket, message: dict) -> None:
         """Relay chat to required destination servers"""
@@ -354,7 +363,6 @@ class WebSocketServer():
                 print("Unknown Destination server.")
 
 
-
     async def relay_public_chat(self, websocket: ServerConnection, message: dict) -> None:
         """Broadcasts the message to all clients in every server."""
         
@@ -363,27 +371,41 @@ class WebSocketServer():
             await client.send(message)
         
         # Send public Chat Message to all servers.
-        print(self.neighbour_connections)
         for server in self.neighbour_connections:
             # print(server.websocket != websocket)
             print(server.server_addr)
-            # if server.websocket != websocket:
-            #     # Do not send back to the server which you received the public chat from
-            #     await server.send(message)
+            if server.websocket != websocket:
+                # Do not send back to the server which you received the public chat from
+                pass
 
-    async def signed_data_handler_hello(self, websocket: ServerConnection, signed_data: dict[str, str]) -> None:
+
+    async def signed_data_handler_hello(self, websocket: ServerConnection, message: dict[str, str]) -> None:
         """Adds a client connection to maintain"""
+
+        signed_data = message['data']
+
+        # Check if websocket is an active connection. Reject hello if so.
+        active_connections = [client.websocket for client in self.clients]
+
+        if websocket in active_connections:
+            err_msg = {
+                "error" : "Connection exists. Unable to process hello message"
+            }
+            await self.send(websocket, err_msg)
+            return
+
         public_key = signed_data['public_key']
         client_connection = OlafClientConnection(websocket, public_key)
         self.clients.add(client_connection)
-        print(f"New client added: {public_key}")
-        client_keys = [client.public_key for client in self.clients]
-        print(f"Update Client List: {client_keys}")
+        # print(f"New client added: {public_key}")
+        # client_keys = [client.public_key for client in self.clients]
+        # print(f"Update Client List: {client_keys}")
         # Relay public_key
-        message = {
-            "server_name" : self.host,
-            "public_key" : public_key
-        }
+        # message = {
+        #     "server_name" : self.host,
+        #     "public_key" : public_key
+        # }
+
         await client_connection.send(message)
         await self.send_client_update_to_neighbours()
     
@@ -397,9 +419,9 @@ class WebSocketServer():
         for neighbour in self.neighbour_connections:
             await neighbour.send(client_update)
     
-    async def signed_data_handler_hello_server(self, websocket: ServerConnection, signed_data: dict) -> None:
+    async def signed_data_handler_hello_server(self, websocket: ServerConnection, message: dict) -> None:
         """Handles the 'hello_server' message"""
-
+        signed_data = message['data']
         public_key = "default_key"
         server_addr = signed_data['sender']
         # websocket = await websockets.connect(server_addr)
@@ -412,8 +434,13 @@ class WebSocketServer():
         """Connects to another server"""
         try:
             websocket = await websockets.connect(server_addr)
+            
+            active_neighbour_connections = [neighbour.server_addr for neighbour in self.neighbour_connections]
+            if server_addr in active_neighbour_connections:
+                print(f"{server_addr} already a part of the neighbourhood. ")
+                return
+            
             neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
-
            
             self.neighbour_connections.add(neighbour_connection)
             print(f"New neighbour added: {neighbour_connection.server_addr}")
