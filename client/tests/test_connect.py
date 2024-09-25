@@ -1,7 +1,7 @@
 # test_connect.py
 import asyncio
 import unittest
-from connect import WebSocketClient
+from vault.connect import WebSocketClient
 
 class TestWebSocketClient(unittest.TestCase):
     def setUp(self):
