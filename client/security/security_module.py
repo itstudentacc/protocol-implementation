@@ -100,7 +100,7 @@ class Encryption:
 
     # Sign messages
     def sign_message(self, message, private_key_pem):
-        # Load private key
+        # load private key
         private_key = serialization.load_pem_private_key(private_key_pem, password=None, backend=self.backend)
 
         # Sign the message
@@ -108,7 +108,7 @@ class Encryption:
             message,
             padding.PSS(
                 mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=32
+                salt_length=padding.PSS.MAX_LENGTH
             ),
             hashes.SHA256()
         )
