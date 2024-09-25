@@ -43,7 +43,7 @@ class Client:
         message_bytes = message_json.encode('utf-8')
 
         # Sign the message
-        signature = self.encryption.sign_rsa(message_bytes, self.private_key)
+        signature = self.encryption.sign_message(message_bytes, self.private_key)
         signature_base64 = base64.b64encode(signature).decode('utf-8')
 
         # Prepare the signed message
@@ -135,7 +135,7 @@ class Client:
 
         # Generate AES key and IV
         aes_key = self.encryption.generate_aes_key()
-        iv = self.encryption.generate_aes_iv()
+        iv = self.encryption.generate_iv()
         iv_base64 = base64.b64encode(iv).decode('utf-8')
 
         sender_fingerprint = self.encryption.generate_fingerprint(self.private_key.public_key())
