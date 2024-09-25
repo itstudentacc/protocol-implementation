@@ -2,14 +2,11 @@ import asyncio
 import websockets
 import json
 import hashlib
-from websockets.asyncio.client import connect
-from websockets.asyncio.server import serve, ServerConnection
-from aiohttp import web
-import http.server
-from concurrent.futures import ThreadPoolExecutor
 import os
 import traceback
 import time
+from websockets.asyncio.client import connect
+from websockets.asyncio.server import serve, ServerConnection
 
 
 class ConnectionHandler():
@@ -63,7 +60,7 @@ class OlafClientConnection(ConnectionHandler):
                 await self.send(error_msg)
 
 class WebSocketServer():
-    def __init__(self, host: str ='localhost', port: int =8000, neighbours: dict[str,str] = {}, public_key: str = "default_public_key"):
+    def __init__(self, host: str ='', port: int =8000, neighbours: dict[str,str] = {}, public_key: str = "default_public_key"):
         self.host = host
         self.port = port
         self.server_address = f"ws://{self.host}:{self.port}"
@@ -100,12 +97,13 @@ class WebSocketServer():
 
     async def recv(self, websocket: ServerConnection) -> None:
         """Receive the message and turn into python object"""
-
-        try:
-            async for message in websocket:
+        while True:
+            try:
+                # async for message in websocket:
+                message = await websocket.recv()
                 try:
                     data = json.loads(message)
-
+                    print(f"Message received: {data}")
                     # Handle all messages
                     await self.handler(websocket, data)
 
@@ -115,28 +113,39 @@ class WebSocketServer():
                         "error" : "Message received not in JSON string."
                     }
                     await self.send(websocket, err)
-
-        except websockets.exceptions.ConnectionClosed:
-            print(f"Connection {websocket.remote_address[0]}:{websocket.remote_address[1]} Closed.")
-            # Remove from clients / neighbours list
-            await self.disconnect(websocket)
+            except websockets.ConnectionClosedOK:
+                break
+            except websockets.exceptions.ConnectionClosed as conn_closed:
+                print(str(conn_closed))
+                # Remove from clients / neighbours list
+                await self.disconnect(websocket)
+        
 
     async def disconnect(self, websocket: ServerConnection) -> None:
         """Handles a disconnection"""
-
+        tmp = []
         for client in self.clients:
             client_addr = f"{client.websocket.remote_address[0]}:{client.websocket.remote_address[1]}"
             print(f"Client: {client_addr}")
 
             if websocket == client.websocket:
-                print(f"Client {client.public_key} has disconnected.")
-                self.clients.remove(client)
-                await self.send_client_update_to_neighbours()
+                print(f"Client {client.public_key} scheduled for disconnection.")
+                tmp.append(client)
 
         for neighbour in self.neighbour_connections:
             if websocket == neighbour.websocket:
-                print(f"Neighbour {neighbour.public_key} has left the neighbourhood")
-                self.neighbour_connections.remove(neighbour)
+                print(f"Neighbour {neighbour.public_key} scheduled for removal")
+                tmp.append(neighbour)
+        
+        for conn in tmp:
+            if conn in self.clients:
+                self.clients.remove(conn)
+                print(f"Client {conn.public_key} removed.")
+                await self.send_client_update_to_neighbours()
+            elif conn in self.neighbour_connections:
+                self.neighbour_connections.remove(conn)
+                print(f"Neighbour {conn.public_key} removed.")
+
 
     
     async def send(self, websocket: ServerConnection, data: dict) -> None:
@@ -457,7 +466,5 @@ if __name__ == "__main__":
     neighbours = {
         "ws://localhost:8001" : "server2_key"
     }
-    
-    ws_server = WebSocketServer('localhost', 8000, neighbours)
-    # ws_server = WebSocketServer('localhost', 8000)
+    ws_server = WebSocketServer('', 9000)
     ws_server.run()
