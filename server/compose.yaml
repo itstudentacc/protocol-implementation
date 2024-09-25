@@ -19,7 +19,7 @@ services:
       - 8001:8000
     volumes:
       - ./files:/files
-    restart-policy: unless-stopped
+    restart: unless-stopped
   
   websocket_server:
     container_name: websocket_server
@@ -28,5 +28,5 @@ services:
       context: websocket_server
     ports:
       - 9000:9000
-    restart-policy: unless-stopped
+    restart: unless-stopped
 

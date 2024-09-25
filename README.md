@@ -1,4 +1,4 @@
-# Group 17 Olaf Implementation
+# Group 17 OLAF Protocol Implementation
 
 ## SERVER
 
@@ -11,3 +11,14 @@ View the `server/README.md` for pre-requisites and how to run the server.
 ## CLIENT
 
 ~ INFORMATION ON CLIENT HERE ~
+
+The client files are tested 3.10/11
+
+### Pre-requisites
+* Python 3.10+
+* pip
+
+### How to Run
+1. Navigate to client dir `cd client`
+2. Install dependencies `pip install requirements.txt`
+3. Run a client instance `python3 client.py`
