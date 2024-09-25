@@ -22,6 +22,7 @@ class Client:
         # Generate RSA key pair
         self.public_key, self.private_key = self.encryption.generate_rsa_key_pair()
 
+        
         await self.connect()
         await self.input_prompt()
         self.loop.run_forever()
@@ -107,14 +108,18 @@ class Client:
 
         message = self.build_signed_data(message_data)
 
+        
         json_message = json.dumps(message)
-        await self.connection.send(json_message)
-        print(f"Sent hello message")
+        
+        try:
+            await self.connection.send(json_message)
+        except Exception as e:
+            print(f"Error sending hello message: {e}")
 
     async def send_public_chat(self, chat):
         self.counter += 1
         
-        fingerprint = self.encryption.generate_fingerprint(self.private_key.public_key())
+        fingerprint = self.encryption.generate_fingerprint(self.public_key)
 
         message_data = {
             "type": "public_chat",
@@ -125,8 +130,12 @@ class Client:
         message = self.build_signed_data(message_data)
 
         message_json = json.dumps(message)
-        await self.send(message_json)
-        print(f"Sent public message: {message_json}")
+        
+        try:
+            await self.connection.send(message_json)
+            print(f"Sent public chat message: {chat}")
+        except Exception as e:
+            print(f"Error sending public chat message: {e}")
 
     async def send_chat(self, recipients, chat):
         recipient_public_keys = [self.clients[fingerprint] for fingerprint in recipients if fingerprint in self.clients]
@@ -172,8 +181,12 @@ class Client:
         signed_message = self.build_signed_data(data)
 
         message_json = json.dumps(signed_message)
-        await self.send(message_json)
-        print(f"Sent chat message: {chat}")
+        
+        try:
+            await self.connection.send(message_json)
+            print(f"Sent chat message: {chat}")
+        except Exception as e:
+            print(f"Error sending chat message: {e}")
 
     async def request_client_list(self):
         message = {
