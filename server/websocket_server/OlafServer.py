@@ -74,7 +74,7 @@ class WebSocketServer():
                 message = await websocket.recv()
                 try:
                     data = json.loads(message)
-                    print(f"Message received: {data}")
+                    # print(f"Message received: {data}")
                     # Handle all messages
                     await self.handler(websocket, data)
 
@@ -271,7 +271,7 @@ class WebSocketServer():
         existing_connection = self.existing_connection(websocket)
         if existing_connection is None:
             # Unknown server is sending data
-            print("unknown server is requesting data")
+            print("Unknown server is requesting data")
         server_to_update = existing_connection.server_addr
 
         # Update clients for particular server.
@@ -397,16 +397,7 @@ class WebSocketServer():
         public_key = signed_data['public_key']
         client_connection = OlafClientConnection(websocket, public_key)
         self.clients.add(client_connection)
-        # print(f"New client added: {public_key}")
-        # client_keys = [client.public_key for client in self.clients]
-        # print(f"Update Client List: {client_keys}")
-        # Relay public_key
-        # message = {
-        #     "server_name" : self.host,
-        #     "public_key" : public_key
-        # }
-
-        await client_connection.send(message)
+        
         await self.send_client_update_to_neighbours()
     
     async def send_client_update_to_neighbours(self) -> None:
