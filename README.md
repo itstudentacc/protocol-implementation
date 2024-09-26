@@ -10,15 +10,20 @@ View the `server/README.md` for pre-requisites and how to run the server.
 
 ## CLIENT
 
-~ INFORMATION ON CLIENT HERE ~
+Client consists of one main file:
+`client/client.py Handles the main instace of the client, including a terminal UI`
+
+view `client/README.md` for instructions regarding the client.
 
 The client files are tested 3.10/11
 
 ### Pre-requisites
-* Python 3.10+
-* pip
+
+- Python 3.10+
+- pip
 
 ### How to Run
+
 1. Navigate to client dir `cd client`
 2. Install dependencies `pip install requirements.txt`
 3. Run a client instance `python3 client.py`
