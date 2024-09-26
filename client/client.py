@@ -5,6 +5,7 @@ import aioconsole
 import websockets
 import sys
 from security.security_module import Encryption
+from nickname_generator import generate_nickname
 
 
 class Client:
@@ -18,7 +19,8 @@ class Client:
         self.last_counters = {} # {fingerprint: counter}
         self.received_messages = []  # Fixed typo
         self.clients = {} # {fingerprint: public_key}
-        self.server_fingerprints = {} # {fingerprint: server_address}  
+        self.server_fingerprints = {} # {fingerprint: server_address}
+        self.nicknames = {} # {fingerprint: nickname}  
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
         
@@ -61,16 +63,20 @@ class Client:
 
         return signed_data
     
-    def print_clients(self):
-        print("Clients:\n")
+    async def print_clients(self):
+        
+        await self.request_client_list()
+        
+        print("Online clients:\n")
         for fingerprint, public_key in self.clients.items():
-            print(f"Fingerprint: {fingerprint}")
+            nickname = self.nicknames.get(fingerprint)
             if fingerprint == self.encryption.generate_fingerprint(self.public_key):
-                print("(me)")
-            print()
+                nickname += " (me)"
+            print(f"{nickname}\n")
             
         if not self.clients:
-            print("No clients (req_clients to update)")
+            print("No clients connected")
+            
             
     
     async def input_prompt(self):
@@ -78,16 +84,16 @@ class Client:
             
             message = await aioconsole.ainput("Enter message type (public, chat, req_clients, clients): ")
             if message == "public":
+                await self.request_client_list()
                 chat = await aioconsole.ainput("Enter public chat message: ")
                 await self.send_public_chat(chat)
             elif message == "chat":
+                await self.request_client_list()
                 recipients = await aioconsole.ainput("Enter recipients separated by commas: ")
                 chat = await aioconsole.ainput("Enter chat message: ")
                 await self.send_chat(recipients.split(','), chat)
-            elif message == "req_clients":
-                await self.request_client_list()
             elif message == "clients":
-                self.print_clients()
+                await self.print_clients()
             elif message == "exit":
                 await self.close()
                 break
@@ -233,7 +239,6 @@ class Client:
 
         message_json = json.dumps(message)
         await self.send(message_json)
-        print("Sent client list request")
 
     async def receive(self):
         try:
@@ -249,6 +254,8 @@ class Client:
             sys.exit(1)
 
     async def handle_message(self, message):
+        
+        await self.request_client_list()
 
         message_type = message.get("type") or message.get("data", {}).get("type")
         
@@ -274,11 +281,13 @@ class Client:
             "message": chat
         })
         
+        sender_nickname = self.nicknames.get(sender_fingerprint)
+        
         # check if sender is me
         if sender_fingerprint == self.encryption.generate_fingerprint(self.public_key):
             sender_fingerprint = "me"
         
-        print(f"\nPublic chat from {sender_fingerprint}: {chat}")
+        print(f"\nPublic chat from {sender_nickname}: {chat}")
 
     async def handle_client_list(self, message):
         servers = message.get("servers", [])
@@ -292,9 +301,10 @@ class Client:
                 self.clients[fingerprint] = public_key
                 self.server_fingerprints[fingerprint] = server_address
                 
+                if fingerprint not in self.nicknames:
+                    nickname = generate_nickname()
+                    self.nicknames[fingerprint] = nickname
                 
-        print(f"\nReceived client list")
-
     async def handle_chat(self, message):
         symm_keys_base64 = message.get("symm_keys", [])
         iv_base64 = message.get("iv")
