@@ -380,7 +380,7 @@ class WebSocketServer():
 
         for destination_server in destination_servers:
 
-            if destination_server == self.server_address:
+            if destination_server in self.server_address: # Comparison includes ws:// or wss://
                 for client in self.clients:
                     await client.send(message)
                 continue
@@ -458,6 +458,7 @@ class WebSocketServer():
         # websocket = await websockets.connect(server_addr)
         neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
         self.neighbour_connections.add(neighbour_connection)
+        
         print(f"New neighbour added: {server_addr}")
 
 
@@ -530,5 +531,5 @@ if __name__ == "__main__":
     neighbours = {
         "ws://localhost:8001" : "server2_key"
     }
-    ws_server = WebSocketServer('', 9000)
+    ws_server = WebSocketServer('localhost', 9000)
     ws_server.run()
