@@ -61,13 +61,11 @@ class Encryption:
         return os.urandom(IV_SIZE)
 
     # Encrypt data using RSA
-    def encrypt_rsa(self, plaintext, public_key_pem):
-        # Load public key
-        public_key = serialization.load_pem_public_key(public_key_pem, backend=self.backend)
+    def encrypt_rsa(self, data, public_key):
 
         # Encrypt the data
         ciphertext = public_key.encrypt(
-            plaintext,
+            data,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
@@ -77,13 +75,10 @@ class Encryption:
         return ciphertext
 
     # Decrypt data using RSA
-    def decrypt_rsa(self, ciphertext, private_key_pem):
-        # Load private key
-        private_key = serialization.load_pem_private_key(private_key_pem, password=None, backend=self.backend)
-
+    def decrypt_rsa(self, cipher_data, private_key):
         # Decrypt the data
         plaintext = private_key.decrypt(
-            ciphertext,
+            cipher_data,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
@@ -94,8 +89,11 @@ class Encryption:
     
     # Encrypt symmetric key
     def encrypt_aes_gcm(self, plaintext, aes_key, iv):
-        cipher = Cipher(algorithms.AES(aes_key), modes.GCM(iv), backend=self.backend)
-        encryptor = cipher.encryptor()
+        encryptor = Cipher(
+            algorithms.AES(aes_key),
+            modes.GCM(iv),
+            backend=self.backend
+        ).encryptor()
         # Encrypt the data
         ciphertext = encryptor.update(plaintext) + encryptor.finalize()
         return ciphertext, encryptor.tag
@@ -103,8 +101,11 @@ class Encryption:
 
     # Decrypt symmetric key
     def decrypt_aes_gcm(self, ciphertext, aes_key, iv, tag):
-        cipher = Cipher(algorithms.AES(aes_key), modes.GCM(iv,tag), backend=self.backend)
-        decryptor = cipher.decryptor()
+        decryptor = Cipher(
+            algorithms.AES(aes_key),
+            modes.GCM(iv, tag),
+            backend=self.backend
+        ).decryptor()
         # Decrypt the data
         plaintext = decryptor.update(ciphertext) + decryptor.finalize()
         return plaintext
