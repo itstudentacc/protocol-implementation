@@ -15,7 +15,9 @@ class ConnectionHandler():
     counter = 0
 
     async def send(self, message: dict) -> None:
-        """Sends a message to the websocket"""
+        """
+        Sends a message to the websocket
+        """
         data = json.dumps(message)
         await self.websocket.send(data)
 
@@ -43,17 +45,23 @@ class WebSocketServer():
         self.public_key = public_key
     
     def exisiting_client(self, websocket: ServerConnection) -> bool:
-        """Returns true if websocket is part of existing client list"""
+        """
+        Returns true if websocket is part of existing client list
+        """
         client_websockets = [client.websocket for client in self.clients]
         return websocket in client_websockets
     
     def existing_neighbour(self, websocket: ServerConnection) -> bool:
-        """Returns true if websocket is part of neighbourhood"""
+        """
+        Returns true if websocket is part of neighbourhood
+        """
         neighbour_websockets = [neighbour.websocket for neighbour in self.neighbour_connections]
         return websocket in neighbour_websockets
 
     def existing_connection(self, websocket:ServerConnection) -> OlafClientConnection | OlafServerConnection | None:
-        """If a connection exists, returns the connection object."""
+        """
+        If a connection exists, returns the connection object.
+        """
         if self.exisiting_client(websocket):
             for client in self.clients:
                 if websocket == client.websocket:
@@ -67,14 +75,16 @@ class WebSocketServer():
         return None
 
     async def recv(self, websocket: ServerConnection) -> None:
-        """Receive the message and turn into python object"""
+        """
+        Receive the message and turn into python object
+        """
         while True:
             try:
                 # async for message in websocket:
                 message = await websocket.recv()
                 try:
                     data = json.loads(message)
-                    print(f"Message received: {data}")
+                    # print(f"Message received: {data}")
                     # Handle all messages
                     await self.handler(websocket, data)
 
@@ -94,7 +104,9 @@ class WebSocketServer():
         
 
     async def disconnect(self, websocket: ServerConnection) -> None:
-        """Handles a disconnection"""
+        """
+        Handles a disconnection
+        """
         tmp = []
         for client in self.clients:
             client_addr = f"{client.websocket.remote_address[0]}:{client.websocket.remote_address[1]}"
@@ -123,14 +135,18 @@ class WebSocketServer():
 
     
     async def send(self, websocket: ServerConnection, data: dict) -> None:
-        """Send the data as serialised message to websocket"""
+        """
+        Send the data as serialised message to websocket
+        """
         message = json.dumps(data)
         await websocket.send(message)
     
     def message_fits_standard(self, message: dict) -> bool:
-        """Returns True if message fits an OLAF Protocol message.
+        """
+        Returns True if message fits an OLAF Protocol message.
         Extent of checking is if whether the message has the correct keys.
-        No checks performed on the values - which leaves a backdoor open."""
+        No checks performed on the values - which leaves a backdoor open.
+        """
 
         valid_keys = [
             "type",
@@ -160,12 +176,16 @@ class WebSocketServer():
 
 
     async def echo(self, websocket: ServerConnection) -> None:
-        """Relays the message back to the sender."""
+        """
+        Relays the message back to the sender.
+        """
         data = await self.recv(websocket)
         await self.send(websocket, data)
 
     async def handler(self, websocket: ServerConnection, message: dict) -> None:
-        """Handle websocket messages"""
+        """
+        Handle websocket messages
+        """
 
         # Check whether message meets standardised format
         if not self.message_fits_standard(message):
@@ -199,7 +219,9 @@ class WebSocketServer():
                 await self.send(websocket, err_msg)
     
     async def client_list_request_handler(self, websocket: ServerConnection) -> None:
-        """Generates a client list and sends to the websocket that requested it."""
+        """
+        Generates a client list and sends to the websocket that requested it.
+        """
 
         if not self.existing_connection(websocket):
             err_msg = {
@@ -235,7 +257,9 @@ class WebSocketServer():
         await self.send(websocket, client_list)
 
     def print_all_clients(self) -> None:
-        """FOR DEBUGGING - print all clients"""
+        """
+        FOR DEBUGGING - print all clients
+        """
         # other_servers_clients = [
         #     {
         #         "address" : address,
@@ -263,7 +287,9 @@ class WebSocketServer():
 
 
     def client_update_handler(self, websocket: ServerConnection, message: dict) -> None:
-        """Updates the client list for a particular server"""
+        """
+        Updates the client list for a particular server
+        """
         print("client_update received")
         updated_client_list = message['clients']
 
@@ -271,7 +297,7 @@ class WebSocketServer():
         existing_connection = self.existing_connection(websocket)
         if existing_connection is None:
             # Unknown server is sending data
-            print("unknown server is requesting data")
+            print("Unknown server is requesting data")
         server_to_update = existing_connection.server_addr
 
         # Update clients for particular server.
@@ -280,7 +306,9 @@ class WebSocketServer():
         
 
     async def client_update_request_handler(self, websocket: ServerConnection):
-        """Handles the 'client_update_request' message."""
+        """
+        Handles the 'client_update_request' message.
+        """
         print("client_update_request received")
         client_update = {
             "type" : "client_update",
@@ -290,7 +318,9 @@ class WebSocketServer():
         await self.send(websocket, client_update)
 
     async def signed_data_handler(self, websocket: ServerConnection, message: dict) -> None:
-        """Handles all signed_data"""
+        """
+        Handles all signed_data
+        """
         try:
             signed_data = message['data']
             signed_data_type = signed_data['type']
@@ -339,7 +369,9 @@ class WebSocketServer():
 
 
     async def relay_chat(self, websocket, message: dict) -> None:
-        """Relay chat to required destination servers"""
+        """
+        Relay chat to required destination servers
+        """
         data = message ["data"]
         destination_servers = data["destination_servers"]
         neighbour_addresses = {}
@@ -348,7 +380,7 @@ class WebSocketServer():
 
         for destination_server in destination_servers:
 
-            if destination_server == self.server_address:
+            if destination_server in self.server_address: # Comparison includes ws:// or wss://
                 for client in self.clients:
                     await client.send(message)
                 continue
@@ -364,7 +396,9 @@ class WebSocketServer():
 
 
     async def relay_public_chat(self, websocket: ServerConnection, message: dict) -> None:
-        """Broadcasts the message to all clients in every server."""
+        """
+        Broadcasts the message to all clients in every server.
+        """
         
         # Send public Chat Message to all clients.
         for client in self.clients:
@@ -380,7 +414,9 @@ class WebSocketServer():
 
 
     async def signed_data_handler_hello(self, websocket: ServerConnection, message: dict[str, str]) -> None:
-        """Adds a client connection to maintain"""
+        """
+        Adds a client connection to maintain
+        """
 
         signed_data = message['data']
 
@@ -397,20 +433,13 @@ class WebSocketServer():
         public_key = signed_data['public_key']
         client_connection = OlafClientConnection(websocket, public_key)
         self.clients.add(client_connection)
-        # print(f"New client added: {public_key}")
-        # client_keys = [client.public_key for client in self.clients]
-        # print(f"Update Client List: {client_keys}")
-        # Relay public_key
-        # message = {
-        #     "server_name" : self.host,
-        #     "public_key" : public_key
-        # }
-
-        await client_connection.send(message)
+        
         await self.send_client_update_to_neighbours()
     
     async def send_client_update_to_neighbours(self) -> None:
-        """Generates a client_update_message and sends to neighbours."""
+        """
+        Generates a client_update_message and sends to neighbours.
+        """
         client_update = {
             "type" : "client_update",
             "clients" : [client.public_key for client in self.clients]
@@ -420,18 +449,23 @@ class WebSocketServer():
             await neighbour.send(client_update)
     
     async def signed_data_handler_hello_server(self, websocket: ServerConnection, message: dict) -> None:
-        """Handles the 'hello_server' message"""
+        """
+        Handles the 'hello_server' message
+        """
         signed_data = message['data']
         public_key = "default_key"
         server_addr = signed_data['sender']
         # websocket = await websockets.connect(server_addr)
         neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
         self.neighbour_connections.add(neighbour_connection)
+        
         print(f"New neighbour added: {server_addr}")
 
 
     async def connect_to_server(self, server_addr: str, public_key: str) -> None:
-        """Connects to another server"""
+        """
+        Connects to another server
+        """
         try:
             websocket = await websockets.connect(server_addr)
             
@@ -471,7 +505,9 @@ class WebSocketServer():
             await self.connect_to_server(server_addr, public_key)
 
     async def start_server(self) -> None:
-        """Start the websocket server"""
+        """
+        Start the websocket server
+        """
 
         self.server = await serve(self.recv, self.host, self.port, ping_interval=20, ping_timeout=10)
         print(f"WebsocketServer started on ws://{self.host}:{self.port}")
@@ -484,7 +520,9 @@ class WebSocketServer():
         await self.server.wait_closed()
 
     def run(self) -> None:
-        """Run the websocket server"""
+        """
+        Run the websocket server
+        """
         asyncio.get_event_loop().run_until_complete(self.start_server())
         asyncio.get_event_loop().run_forever()
 
@@ -493,5 +531,5 @@ if __name__ == "__main__":
     neighbours = {
         "ws://localhost:8001" : "server2_key"
     }
-    ws_server = WebSocketServer('', 9000)
+    ws_server = WebSocketServer('localhost', 9000)
     ws_server.run()
