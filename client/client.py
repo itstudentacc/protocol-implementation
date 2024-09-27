@@ -6,6 +6,7 @@ import websockets
 import sys
 from security.security_module import Encryption
 from nickname_generator import generate_nickname
+from cryptography.hazmat.primitives import serialization
 
 
 class Client:
@@ -26,7 +27,9 @@ class Client:
         
     async def start(self):
         # Generate RSA key pair
-        self.public_key, self.private_key = self.encryption.generate_rsa_key_pair()
+        self.public_key_pem, self.private_key_pem = self.encryption.generate_rsa_key_pair()
+        self.public_key = self.encryption.load_public_key(self.public_key_pem)
+        self.private_key = self.encryption.load_private_key(self.private_key_pem)
 
         
         await self.connect()
@@ -50,7 +53,7 @@ class Client:
         message_bytes = message_json.encode('utf-8')
 
         # Sign the message
-        signature = self.encryption.sign_message(message_bytes, self.private_key)
+        signature = self.encryption.sign_message(message_bytes, self.private_key_pem)
         signature_base64 = base64.b64encode(signature).decode('utf-8')
 
         # Prepare the signed message
@@ -63,14 +66,12 @@ class Client:
 
         return signed_data
     
-    async def print_clients(self):
-        
-        await self.request_client_list()
-        
+    def print_clients(self):
+                
         print("Online clients:\n")
         for fingerprint, public_key in self.clients.items():
             nickname = self.nicknames.get(fingerprint)
-            if fingerprint == self.encryption.generate_fingerprint(self.public_key):
+            if fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
                 nickname += " (me)"
             print(f"{nickname}\n")
             
@@ -78,11 +79,10 @@ class Client:
             print("No clients connected")
             
             
-    
     async def input_prompt(self):
         while True:
             
-            message = await aioconsole.ainput("Enter message type (public, chat, req_clients, clients): ")
+            message = await aioconsole.ainput("Enter message type (public, chat, clients): ")
             if message == "public":
                 await self.request_client_list()
                 chat = await aioconsole.ainput("Enter public chat message: ")
@@ -93,7 +93,8 @@ class Client:
                 chat = await aioconsole.ainput("Enter chat message: ")
                 await self.send_chat(recipients.split(','), chat)
             elif message == "clients":
-                await self.print_clients()
+                await self.request_client_list()
+                self.print_clients()
             elif message == "exit":
                 await self.close()
                 break
@@ -128,11 +129,13 @@ class Client:
 
     async def send_hello(self):
         self.counter += 1
-        public_key_base64 = base64.b64encode(self.public_key).decode('utf-8')
+        
+        public_pem = self.public_key_pem.decode('utf-8')
+        
 
         message_data = {
             "type": "hello",
-            "public_key": public_key_base64  # Use base64 encoded public_key
+            "public_key": public_pem  
         }
 
         message = self.build_signed_data(message_data)
@@ -140,15 +143,13 @@ class Client:
         
         json_message = json.dumps(message)
         
-        try:
-            await self.connection.send(json_message)
-        except Exception as e:
-            print(f"Error sending hello message: {e}")
+        await self.send(json_message)
+        
 
     async def send_public_chat(self, chat):
         self.counter += 1
         
-        fingerprint = self.encryption.generate_fingerprint(self.public_key)
+        fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
 
         message_data = {
             "type": "public_chat",
@@ -165,15 +166,23 @@ class Client:
         
         
     async def send_chat(self, recipients, chat):
-        valid_recipients = [fingerprint for fingerprint in recipients if fingerprint in self.clients]
-        if not valid_recipients:
-            print("No valid recipients")
-            return
+        
+        valid_fingerprints = []
+        for username in recipients:
+            fingerprint = None
+            for fp, nickname in self.nicknames.items():
+                if nickname == username:
+                    fingerprint = fp
+                    break
+            if fingerprint:
+                valid_fingerprints.append(fingerprint)
+            else:
+                print(f"Unknown recipient: {username}")
         
         destination_servers = set()
         recipient_public_keys = []
         
-        for fingerprint in valid_recipients:
+        for fingerprint in valid_fingerprints:
             server_address = self.server_fingerprints.get(fingerprint)
             if server_address:
                 destination_servers.add(server_address)
@@ -192,8 +201,8 @@ class Client:
         iv = self.encryption.generate_iv()
         ivb64 = base64.b64encode(iv).decode('utf-8')
         
-        sender_public_key = self.public_key
-        sender_fingerprint = self.encryption.generate_fingerprint(sender_public_key)
+        
+        sender_fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
         participants = [sender_fingerprint] + [self.encryption.generate_fingerprint(public_key) for public_key in recipient_public_keys]
         
         chat_data = {
@@ -284,21 +293,20 @@ class Client:
         sender_nickname = self.nicknames.get(sender_fingerprint)
         
         # check if sender is me
-        if sender_fingerprint == self.encryption.generate_fingerprint(self.public_key):
-            sender_fingerprint = "me"
+        if sender_fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
+            sender_nickname = "me"
         
         print(f"\nPublic chat from {sender_nickname}: {chat}")
 
     async def handle_client_list(self, message):
         servers = message.get("servers", [])
         for server in servers:
-            clients = server.get("clients", [])
-            for client in clients:
-                server_address = server.get("address")
-                public_key_base64 = client
-                public_key = base64.b64decode(public_key_base64.encode('utf-8'))
-                fingerprint = self.encryption.generate_fingerprint(public_key)
-                self.clients[fingerprint] = public_key
+            server_address = server.get("address")
+            clients_pem = server.get("clients", [])
+            for public_key_pem_str in clients_pem:
+                public_key_pem = public_key_pem_str.encode('utf-8')
+                fingerprint = self.encryption.generate_fingerprint(public_key_pem)
+                self.clients[fingerprint] = public_key_pem
                 self.server_fingerprints[fingerprint] = server_address
                 
                 if fingerprint not in self.nicknames:
@@ -314,8 +322,8 @@ class Client:
             print("Invalid chat message")
             return
         
-        private_key = self.private_key
-        my_fingerprint = self.encryption.generate_fingerprint(self.public_key)
+        private_key = self.private_key_pem
+        my_fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
 
         iv = base64.b64decode(iv_base64.encode('utf-8'))
         cipher_tag = base64.b64decode(chat_base64.encode('utf-8'))
@@ -329,19 +337,26 @@ class Client:
                 plaintext_bytes = self.encryption.decrypt_aes_gcm(ciphertext, symm_key, iv, tag)
                 chat_data = json.loads(plaintext_bytes.decode('utf-8'))
                 
+                chat_content = chat_data.get("chat", {})
                 participants = chat_data.get("participants", [])
+                message = chat_content.get("message", "")
+                
                 if my_fingerprint in participants:
                     sender_fingerprint = participants[0]
-                    message = chat_data.get("message")
-                    self.received_messages.append({
+                    
+                    message_entry = {
                         "sender": sender_fingerprint,
                         "message": message
-                    })
-                    print(f"\nChat from {sender_fingerprint}: {message}")
+                    }
+                    self.received_messages.append(message_entry)
+                     
+                    sender_nickname = self.nicknames.get(sender_fingerprint)
+                    print(f"\nChat from {sender_nickname}: {message}")
                     return
             except Exception as e:
                 print(f"Failed to decrypt chat: {e}")
                 return
+            
 
     async def send(self, message_json):
         try:
