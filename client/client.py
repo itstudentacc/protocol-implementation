@@ -118,7 +118,7 @@ class Client:
     async def input_prompt(self):
         while True:
             
-            message = await aioconsole.ainput("Enter message type (public, chat, clients): ")
+            message = await aioconsole.ainput("Enter message type (public, chat, clients, upload): ")
             if message == "public":
                 await self.request_client_list()
                 chat = await aioconsole.ainput("Enter public chat message: ")
@@ -132,6 +132,8 @@ class Client:
             elif message == "clients":
                 await self.request_client_list()
                 self.print_clients()
+            elif message == "upload":
+                await self.upload_file()
             elif message == "exit":
                 await self.close()
                 break
@@ -359,6 +361,40 @@ class Client:
             await self.connection.send(message_json)
         except Exception as e:
             print(f"Error sending message: {e}")
+
+    async def upload_file(self):
+        file_path = await aioconsole.ainput("Enter the file path to upload: ")
+        
+        try:
+            with open(file_path, "rb") as file:
+                file_data = file.read()
+                
+                if len(file_data) > 10 * 1024 * 1024:
+                    print("File size exceeds 10 MB limit.")
+                    return
+                
+                file_base64 = base64.b64encode(file_data).decode('utf-8')
+                
+                self.counter += 1
+                fingerprint = self.encryption.generate_fingerprint(self.public_key)
+                
+                message_data = {
+                    "type": "file_upload",
+                    "sender": fingerprint,
+                    "file_name": file_path.split('/')[-1],
+                    "file_data": file_base64
+                }
+                
+                message = self.build_signed_data(message_data)
+                message_json = json.dumps(message)
+                
+                await self.send(message_json)
+                print(f"Uploaded file: {file_path}")
+                
+        except FileNotFoundError:
+            print("File not found. Please check the file path.")
+        except Exception as e:
+            print(f"Failed to upload file: {e}")
 
 
 client = Client()
