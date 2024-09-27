@@ -395,6 +395,7 @@ class Client:
             print("File not found. Please check the file path.")
         except Exception as e:
             print(f"Failed to upload file: {e}")
+    
 
 
 client = Client()
