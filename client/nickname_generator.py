@@ -16,3 +16,4 @@ def generate_nickname():
     
     return random.choice(formats)
 
+

@@ -3,6 +3,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 import hashlib
+import base64
 import os
 
 #Constant
@@ -40,6 +41,23 @@ class Encryption:
         )
 
         return pem_public_key, pem_private_key
+    
+    def export_public_key(self, public_key):
+        pem_public_key = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        return pem_public_key
+    
+    #load public key from pem
+    def load_public_key(self, pem_public_key):
+        public_key = serialization.load_pem_public_key(pem_public_key, backend=self.backend)
+        return public_key
+    
+    #load private key from pem
+    def load_private_key(self, pem_private_key):
+        private_key = serialization.load_pem_private_key(pem_private_key, password=None, backend=self.backend)
+        return private_key
 
     # Generate random AES key
     def generate_aes_key(self):
@@ -50,13 +68,11 @@ class Encryption:
         return os.urandom(IV_SIZE)
 
     # Encrypt data using RSA
-    def encrypt_rsa(self, plaintext, public_key_pem):
-        # Load public key
-        public_key = serialization.load_pem_public_key(public_key_pem, backend=self.backend)
+    def encrypt_rsa(self, data, public_key):
 
         # Encrypt the data
         ciphertext = public_key.encrypt(
-            plaintext,
+            data,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
@@ -66,13 +82,10 @@ class Encryption:
         return ciphertext
 
     # Decrypt data using RSA
-    def decrypt_rsa(self, ciphertext, private_key_pem):
-        # Load private key
-        private_key = serialization.load_pem_private_key(private_key_pem, password=None, backend=self.backend)
-
+    def decrypt_rsa(self, cipher_data, private_key):
         # Decrypt the data
         plaintext = private_key.decrypt(
-            ciphertext,
+            cipher_data,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
@@ -83,8 +96,11 @@ class Encryption:
     
     # Encrypt symmetric key
     def encrypt_aes_gcm(self, plaintext, aes_key, iv):
-        cipher = Cipher(algorithms.AES(aes_key), modes.GCM(iv), backend=self.backend)
-        encryptor = cipher.encryptor()
+        encryptor = Cipher(
+            algorithms.AES(aes_key),
+            modes.GCM(iv),
+            backend=self.backend
+        ).encryptor()
         # Encrypt the data
         ciphertext = encryptor.update(plaintext) + encryptor.finalize()
         return ciphertext, encryptor.tag
@@ -92,8 +108,11 @@ class Encryption:
 
     # Decrypt symmetric key
     def decrypt_aes_gcm(self, ciphertext, aes_key, iv, tag):
-        cipher = Cipher(algorithms.AES(aes_key), modes.GCM(iv,tag), backend=self.backend)
-        decryptor = cipher.decryptor()
+        decryptor = Cipher(
+            algorithms.AES(aes_key),
+            modes.GCM(iv, tag),
+            backend=self.backend
+        ).decryptor()
         # Decrypt the data
         plaintext = decryptor.update(ciphertext) + decryptor.finalize()
         return plaintext
@@ -116,13 +135,9 @@ class Encryption:
     
     # Calculate fingerprint using public key
     def generate_fingerprint(self, public_key_pem):
-        public_key = serialization.load_pem_public_key(public_key_pem, backend=self.backend)
-        public_key_bytes = public_key.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
-        fingerprint = hashlib.sha256(public_key_bytes).hexdigest()
-        return fingerprint
+        
+        fingerprint = hashlib.sha256(public_key_pem).digest()
+        return base64.b64encode(fingerprint).decode('utf-8')
 
     # Verify signature using RSA-PSS
     def validate_signature(self, message, signature, public_key_pem):
