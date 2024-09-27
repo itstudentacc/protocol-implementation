@@ -87,7 +87,8 @@ class Client:
         
         symm_keys = []
         for public_key in recipient_public_keys:
-            encrypted_symm_key = self.encryption.encrypt_rsa(aes_key, public_key)
+            public_key_pem = self.encryption.load_public_key(public_key)
+            encrypted_symm_key = self.encryption.encrypt_rsa(aes_key, public_key_pem)
             encrypted_symm_key_base64 = base64.b64encode(encrypted_symm_key).decode('utf-8')
             symm_keys.append(encrypted_symm_key_base64)
             
@@ -106,7 +107,7 @@ class Client:
                 
         print("Online clients:\n")
         for fingerprint, public_key in self.clients.items():
-            print(f"Fingerprint: {fingerprint}")
+            print(f"Fingerprint: {fingerprint}, Public Key: {public_key}")
             if fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
                 print("(me)")
             
@@ -202,11 +203,7 @@ class Client:
         
         
     async def send_chat(self, recipients, chat):
-        
-        my_fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
-        if my_fingerprint not in recipients:
-            recipients.append(my_fingerprint)
-            
+                    
         valid_recipients = [fingerprint for fingerprint in recipients if fingerprint in self.clients]
         
         if not valid_recipients:
@@ -312,13 +309,11 @@ class Client:
     async def handle_chat(self, message):
         data = message.get("data")
         
-        
+
         symm_keys_base64 = data.get("symm_keys", [])
         iv_base64 = data.get("iv")
         chat_base64 = data.get("chat")
         
-        print(f"Symmetric Keys: {symm_keys_base64}, IV: {iv_base64}, Chat: {chat_base64}")
-
         if not symm_keys_base64 or not iv_base64 or not chat_base64:
             print("Invalid chat message")
             return
@@ -327,25 +322,22 @@ class Client:
         my_fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
 
         iv = base64.b64decode(iv_base64.encode('utf-8'))
-        cipher_tag = base64.b64decode(chat_base64.encode('utf-8'))
-        ciphertext = cipher_tag[:-16]
-        tag = cipher_tag[-16:]
+        cipher_and_tag = base64.b64decode(chat_base64.encode('utf-8'))
+        ciphertext = cipher_and_tag[:-16]
+        tag = cipher_and_tag[-16:]
 
-        print(f"IV: {iv}, Ciphertext: {ciphertext}, Tag: {tag}")
         
         for idx, symm_keys_base64 in enumerate(symm_keys_base64):
             symm_key_encrypted = base64.b64decode(symm_keys_base64.encode('utf-8'))
             try:
-                print("attempting to decrypt symm key")
                 symm_key = self.encryption.decrypt_rsa(symm_key_encrypted, private_key)
-                print(f"Decrypted Symmetric Key: {symm_key}")
                 plaintext_bytes = self.encryption.decrypt_aes_gcm(ciphertext, symm_key, iv, tag)
                 chat_data = json.loads(plaintext_bytes.decode('utf-8'))
                 
                 chat_content = chat_data.get("chat", {})
-                participants = chat_data.get("participants", [])
+                participants = chat_content.get("participants", [])
                 message = chat_content.get("message", "")
-                
+                                
                 if my_fingerprint in participants:
                     sender_fingerprint = participants[0]
                     
@@ -358,7 +350,7 @@ class Client:
                     print(f"\nChat from {sender_fingerprint}: {message}")
                     return
             except Exception as e:
-                print(f"Failed to decrypt chat: {e}")
+                print(f"Failed to decrypt message with key {idx}: {e}")
                 return
             
 

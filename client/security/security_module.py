@@ -42,6 +42,13 @@ class Encryption:
 
         return pem_public_key, pem_private_key
     
+    def export_public_key(self, public_key):
+        pem_public_key = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        return pem_public_key
+    
     #load public key from pem
     def load_public_key(self, pem_public_key):
         public_key = serialization.load_pem_public_key(pem_public_key, backend=self.backend)
