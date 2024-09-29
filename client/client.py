@@ -104,16 +104,25 @@ class Client:
         return signed_data
     
     def print_clients(self):
-                
-        print("Online clients:\n")
-        for fingerprint, public_key in self.clients.items():
-            print(f"Fingerprint: {fingerprint}, Public Key: {public_key}")
-            if fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
-                print("(me)")
-            
+        
+        print("\nConnected clients:\n")
+        
         if not self.clients:
             print("No clients connected")
+        
+        for fingerprint, public_key in self.clients.items():
+            if fingerprint not in self.nicknames:
+                nickname = generate_nickname(fingerprint)
+                self.nicknames[fingerprint] = nickname
+            else:
+                nickname = self.nicknames[fingerprint]
             
+            if fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
+                print (f"   -{nickname} (me)")
+            else:
+                print (f"   -{nickname}")
+        
+        print("\n")
             
     async def input_prompt(self):
         while True:
@@ -125,10 +134,9 @@ class Client:
                 await self.send_public_chat(chat)
             elif message == "chat":
                 await self.request_client_list()
-                recipients = await aioconsole.ainput("Enter recipient fingerprint: ")
+                recipients = await aioconsole.ainput("Enter recipient names, seperated by commas: ")
                 chat = await aioconsole.ainput("Enter chat message: ")
-                #recipients is a list
-                await self.send_chat([recipients], chat)
+                await self.send_chat(recipients.split(","), chat)
             elif message == "clients":
                 await self.request_client_list()
                 self.print_clients()
@@ -150,6 +158,8 @@ class Client:
 
             # Listen for incoming messages
             asyncio.ensure_future(self.receive())
+            
+            await self.request_client_list()
 
         except Exception as e:
             print(f"Failed to connect: {e}")
@@ -204,7 +214,9 @@ class Client:
         print(f"Sent public chat message: {chat}")
         
         
-    async def send_chat(self, recipients, chat):
+    async def send_chat(self, recipients_nicknames, chat):
+        
+        recipients = [fingerprint for fingerprint, nickname in self.nicknames.items() if nickname in recipients_nicknames]
                     
         valid_recipients = [fingerprint for fingerprint in recipients if fingerprint in self.clients]
         
@@ -234,7 +246,7 @@ class Client:
         signed_data = self.build_chat_message(destination_servers, recipient_public_keys, chat)
         message_json = json.dumps(signed_data)
         await self.send(message_json)
-        print(f"Sent chat message")
+        print(f"Sent chat message to {recipients_nicknames}: {chat}")
 
     async def request_client_list(self):
         message = {
@@ -304,9 +316,7 @@ class Client:
                 self.clients[fingerprint] = public_key_pem
                 self.server_fingerprints[fingerprint] = server_address
                 
-                if fingerprint not in self.nicknames:
-                    nickname = generate_nickname()
-                    self.nicknames[fingerprint] = nickname
+                
                 
     async def handle_chat(self, message):
         data = message.get("data")
@@ -320,8 +330,8 @@ class Client:
             print("Invalid chat message")
             return
         
-        private_key = self.private_key
         my_fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
+        decrypted = False
 
         iv = base64.b64decode(iv_base64.encode('utf-8'))
         cipher_and_tag = base64.b64decode(chat_base64.encode('utf-8'))
@@ -331,29 +341,35 @@ class Client:
         
         for idx, symm_keys_base64 in enumerate(symm_keys_base64):
             symm_key_encrypted = base64.b64decode(symm_keys_base64.encode('utf-8'))
-            try:
-                symm_key = self.encryption.decrypt_rsa(symm_key_encrypted, private_key)
+            try: 
+                symm_key = self.encryption.decrypt_rsa(symm_key_encrypted, self.private_key)
                 plaintext_bytes = self.encryption.decrypt_aes_gcm(ciphertext, symm_key, iv, tag)
                 chat_data = json.loads(plaintext_bytes.decode('utf-8'))
                 
                 chat_content = chat_data.get("chat", {})
                 participants = chat_content.get("participants", [])
                 message = chat_content.get("message", "")
+                
                                 
                 if my_fingerprint in participants:
                     sender_fingerprint = participants[0]
+                    
+                    sender_nickname = self.nicknames.get(sender_fingerprint)
                     
                     message_entry = {
                         "sender": sender_fingerprint,
                         "message": message
                     }
                     self.received_messages.append(message_entry)
-                     
-                    print(f"\nChat from {sender_fingerprint}: {message}")
-                    return
+                    
+                    print(f"\nChat from {sender_nickname}: {message}")
+                    decrypted = True
+                    break
             except Exception as e:
-                print(f"Failed to decrypt message with key {idx}: {e}")
-                return
+                continue
+            
+        if not decrypted:
+            return
             
 
     async def send(self, message_json):
