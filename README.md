@@ -1,5 +1,7 @@
 # Group 17 OLAF Protocol Implementation
 
+### Ivan Tranquilan, Kyle Johnston, Gregorius Baswara Wira Nuraga
+
 ## SERVER
 
 The server consists of two files:
@@ -11,7 +13,7 @@ View the `server/README.md` for pre-requisites and how to run the server.
 ## CLIENT
 
 Client consists of one main file:
-`client/client.py Handles the main instace of the client, including a terminal UI`
+`client/client.py` Handles the main instace of the client, including a terminal UI
 
 view `client/README.md` for instructions regarding the client.
 
