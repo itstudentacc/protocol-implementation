@@ -4,6 +4,8 @@ import asyncio
 import aioconsole
 import websockets
 import sys
+import tkinter as tk
+from tkinter import filedialog, messagebox
 from security.security_module import Encryption
 from nickname_generator import generate_nickname
 
@@ -34,7 +36,55 @@ class Client:
         await self.connect()
         await self.input_prompt()
         self.loop.run_forever()
+    
+    def popup_upload(self):
+        # create new tkinter window for uploading files
+        self.root = tk.Tk()
+        self.root.title("Chat Upload Window")
+        self.root.geometry("300x200")
 
+        # create a button for uploading files
+        upload_button = tk.Button(self.root, text="Upload File", command=self.upload_file)
+        upload_button.pack(pady=50)
+
+        # run the tkinter window
+        self.root.mainloop()
+
+    async def upload_file(self):
+        file_path = filedialog.askopenfilename()
+        
+        if file_path:
+            try:
+                with open(file_path, "rb") as file:
+                    file_data = file.read()
+                    
+                    if len(file_data) > 10 * 1024 * 1024:
+                        messagebox.showerror("Error", "File size exceeds 10MB")
+                        return
+                    
+                    file_base64 = base64.b64encode(file_data).decode('utf-8')
+                    
+                    self.counter += 1
+                    fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
+                    
+                    message_data = {
+                        "type": "file_upload",
+                        "sender": fingerprint,
+                        "file_name": file_path.split('/')[-1],
+                        "file_data": file_base64
+                    }
+                    
+                    message = self.build_signed_data(message_data)
+                    message_json = json.dumps(message)
+                    
+                    asyncio.run_coroutine_threadsafe(self.send(message_json), self.loop)
+                    messagebox.showinfo("Success", f"uploaded file: {file_path}")
+                    
+            except FileNotFoundError:
+                print("File not found. Please check the file path.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error uploading file: {str(e)}")
+        
     def parse_message(self, message):
         try:
             message_dict = json.loads(message)
@@ -141,7 +191,7 @@ class Client:
                 await self.request_client_list()
                 self.print_clients()
             elif message == "upload":
-                await self.upload_file()
+                self.popup_upload()
             elif message == "exit":
                 await self.close()
                 break
@@ -284,6 +334,8 @@ class Client:
             await self.handle_client_list(message)
         elif message_type == "chat":
             await self.handle_chat(message)
+        elif message_type == "upload_file":
+            self.handle_file_upload(message)
         else:
             print(f"Unknown message type: {message_type}")
 
@@ -315,7 +367,28 @@ class Client:
                 fingerprint = self.encryption.generate_fingerprint(public_key_pem)
                 self.clients[fingerprint] = public_key_pem
                 self.server_fingerprints[fingerprint] = server_address
-                
+    
+    def handle_file_upload(self, message):
+        data = message.get("data")
+        
+        sender_fingerprint = data.get("sender")
+        sender_nickname = self.nicknames.get(sender_fingerprint, "unknown")
+        
+        file_name = data.get("file_name")
+        file_data_base64 = data.get("file_data")
+
+        # decode base64 file data
+        file_data = base64.b64decode(file_data_base64.encode('utf-8'))
+
+        # save the file to the client's local directory
+        save_directory = filedialog.askdirectory()
+        if save_directory:
+            with open(f"{save_directory}/{file_name}", "wb") as file:
+                file.write(file_data)
+                print(f"File '{file_name}' received from {sender_nickname} and saved to {save_directory}")
+                messagebox.showinfo("Success", f"File '{file_name}' received from {sender_nickname} and saved to {save_directory}")
+        else:
+            print("File not saved")     
                 
                 
     async def handle_chat(self, message):
@@ -377,41 +450,6 @@ class Client:
             await self.connection.send(message_json)
         except Exception as e:
             print(f"Error sending message: {e}")
-
-    async def upload_file(self):
-        file_path = await aioconsole.ainput("Enter the file path to upload: ")
-        
-        try:
-            with open(file_path, "rb") as file:
-                file_data = file.read()
-                
-                if len(file_data) > 10 * 1024 * 1024:
-                    print("File size exceeds 10 MB limit.")
-                    return
-                
-                file_base64 = base64.b64encode(file_data).decode('utf-8')
-                
-                self.counter += 1
-                fingerprint = self.encryption.generate_fingerprint(self.public_key)
-                
-                message_data = {
-                    "type": "file_upload",
-                    "sender": fingerprint,
-                    "file_name": file_path.split('/')[-1],
-                    "file_data": file_base64
-                }
-                
-                message = self.build_signed_data(message_data)
-                message_json = json.dumps(message)
-                
-                await self.send(message_json)
-                print(f"Uploaded file: {file_path}")
-                
-        except FileNotFoundError:
-            print("File not found. Please check the file path.")
-        except Exception as e:
-            print(f"Failed to upload file: {e}")
-    
 
 
 client = Client()
