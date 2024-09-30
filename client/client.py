@@ -25,7 +25,7 @@ class Client:
         self.clients = {} # {fingerprint: public_key}
         self.server_fingerprints = {} # {fingerprint: server_address}
         self.nicknames = {} # {fingerprint: nickname}  
-        self.file.logbook = [] # keep track of all files received
+        self.file_logbook = [] # keep track of all files received
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
         
@@ -60,12 +60,6 @@ class Client:
         # Create a button for choosing a file
         choose_button = tk.Button(self.root, text="Choose File", command=self.choose_file)
         choose_button.pack(pady=10)
-
-        # Dropdown list for recipients
-        self.recipient_var = tk.StringVar(self.root)
-        self.recipient_var.set(self.recipients_list[0])  # Set the default value to the first item in the list
-        self.recipient_menu = tk.OptionMenu(self.root, self.recipient_var, *self.recipients_list)
-        self.recipient_menu.pack(pady=10)
 
         # Create a button for uploading files
         upload_button = tk.Button(self.root, text="Upload File", command=self.start_upload_file)
@@ -389,7 +383,7 @@ class Client:
     async def input_prompt(self):
         while True:
             
-            message = await aioconsole.ainput("Enter message type (public, chat, clients, upload): ")
+            message = await aioconsole.ainput("Enter message type (public, chat, clients, upload, logbook): ")
             if message == "public":
                 await self.request_client_list()
                 chat = await aioconsole.ainput("Enter public chat message: ")

@@ -5,9 +5,13 @@ import hashlib
 import os
 import traceback
 import time
+from aiohttp import web
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve, ServerConnection
 
+# Directory to save the uploaded files
+UPLOAD_DIR = 'uploads'
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 class ConnectionHandler():
     websocket = None
@@ -33,17 +37,17 @@ class OlafClientConnection(ConnectionHandler):
         self.public_key = public_key
 
 class WebSocketServer():
-    def __init__(self, host: str ='', port: int =8000, neighbours: dict[str,str] = {}, public_key: str = "default_public_key"):
+    def __init__(self, host, ws_port, http_port, neighbours, public_key):
         self.host = host
-        self.port = port
+        self.port = ws_port
         self.server_address = f"ws://{self.host}:{self.port}"
         self.clients = set()
         self.neighbours = neighbours
         self.all_clients = {}
         self.neighbour_connections = set()
         self.server = None
-        self.file_logbook = [] # store uploaded files
         self.public_key = public_key
+        self.http_port = http_port
     
     def exisiting_client(self, websocket: ServerConnection) -> bool:
         """
@@ -96,14 +100,15 @@ class WebSocketServer():
                     }
                     await self.send(websocket, err)
             except websockets.ConnectionClosedOK:
+                await self.disconnect(websocket)
                 break
             except websockets.exceptions.ConnectionClosed as conn_closed:
                 print(str(conn_closed))
                 print('line 91')
                 # Remove from clients / neighbours list
                 await self.disconnect(websocket)
-        
-
+                break
+                        
     async def disconnect(self, websocket: ServerConnection) -> None:
         """
         Handles a disconnection
@@ -114,22 +119,20 @@ class WebSocketServer():
             print(f"Client: {client_addr}")
 
             if websocket == client.websocket:
-                print(f"Client {client.public_key} scheduled for disconnection.")
                 tmp.append(client)
 
         for neighbour in self.neighbour_connections:
             if websocket == neighbour.websocket:
-                print(f"Neighbour {neighbour.public_key} scheduled for removal")
                 tmp.append(neighbour)
         
         for conn in tmp:
             if conn in self.clients:
                 self.clients.remove(conn)
-                print(f"Client {conn.public_key} removed.")
                 await self.send_client_update_to_neighbours()
             elif conn in self.neighbour_connections:
                 self.neighbour_connections.remove(conn)
-                print(f"Neighbour {conn.public_key} removed.")
+                        
+        await self.broadcast_client_list()
 
         await websocket.close(code=1000)
 
@@ -184,17 +187,23 @@ class WebSocketServer():
         await self.send(websocket, data)
 
     async def handler(self, websocket: ServerConnection, message: dict) -> None:
-        # Check whether message meets standardized format
+        """
+        Handle websocket messages
+        """
+
+        # Check whether message meets standardised format
         if not self.message_fits_standard(message):
             # Return invalid message error.
-            print(f"Unknown message type received")
+            print(f"Unkown message type received")
             err_msg = {
-                "error": "Message does not fit OLAF Protocol standard."
+                "error" : "Message does not fit OLAF Protocol standard."
             }
             await self.send(websocket, err_msg)
             return
 
         # Only valid messages from this point.
+
+        # Handle each type accordingly
         msg_type = message["type"]
         match msg_type:
             case "signed_data":
@@ -202,96 +211,17 @@ class WebSocketServer():
             case "client_list_request":
                 await self.client_list_request_handler(websocket)
             case "client_update":
-                self.client_update_handler(websocket, message)
+                await self.client_update_handler(websocket, message)
             case "client_update_request":
                 await self.client_update_request_handler(websocket)
-            case "file_upload":
-                await self.file_upload_handler(websocket, message)
-            case "logbook_request":
-                await self.logbook_request_handler(websocket)
-            case "file_download_request":
-                await self.download_file_handler(websocket, message)
             case _:
+
                 print("Unknown entity trying to communicate.")
                 err_msg = {
-                    "error": "Connection must be established with hello / hello_server message first."
+                    "error" : "Connection must be established with hello / hello_server message first."
                 }
                 await self.send(websocket, err_msg)
     
-    async def file_upload_handler(self, websocket: ServerConnection, message: dict) -> None:
-        data = message.get("data")
-        
-        sender_fingerprint = data.get("sender")
-        file_name = data.get("file_name")
-        file_data_base64 = data.get("file_data")
-
-        # Add the uploaded file to the logbook
-        self.file_logbook.append({
-            "file_name": file_name,
-            "file_data": file_data_base64,
-            "sender": sender_fingerprint
-        })
-
-        # Broadcast the file upload to all connected clients
-        broadcast_message = {
-            "type": "file_upload",
-            "data": {
-                "sender": sender_fingerprint,
-                "file_name": file_name,
-                "file_data": file_data_base64
-            }
-        }
-
-        await self.broadcast_to_all_clients(broadcast_message)
-
-    async def broadcast_to_all_clients(self, message: dict) -> None:
-        for client in self.clients:
-            await client.send(message)
-    
-    async def logbook_request_handler(self, websocket: ServerConnection) -> None:
-        # Prepare logbook data
-        logbook_data = [{
-            "file_name": entry["file_name"],
-            "sender": entry["sender"]
-        } for entry in self.file_logbook]
-
-        # Send logbook to the requesting client
-        logbook_message = {
-            "type": "logbook_response",
-            "data": {
-                "logbook": logbook_data
-            }
-        }
-
-        await self.send(websocket, logbook_message)
-
-
-    async def download_file_handler(self, websocket: ServerConnection, message: dict) -> None:
-        file_name = message["data"]["file_name"]
-        
-        # Search for the file in the logbook
-        for entry in self.file_logbook:
-            if entry["file_name"] == file_name:
-                # Send the file data to the requesting client
-                file_data_message = {
-                    "type": "file_download_response",
-                    "data": {
-                        "file_name": entry["file_name"],
-                        "file_data": entry["file_data"]
-                    }
-                }
-                await self.send(websocket, file_data_message)
-                return
-
-        # If file not found, send an error
-        error_message = {
-            "type": "error",
-            "data": {
-                "message": "File not found in the logbook."
-            }
-        }
-        await self.send(websocket, error_message)
-
     async def client_list_request_handler(self, websocket: ServerConnection) -> None:
         """
         Generates a client list and sends to the websocket that requested it.
@@ -360,7 +290,7 @@ class WebSocketServer():
         print(f"All Clients: {servers}")
 
 
-    def client_update_handler(self, websocket: ServerConnection, message: dict) -> None:
+    async def client_update_handler(self, websocket: ServerConnection, message: dict) -> None:
         """
         Updates the client list for a particular server
         """
@@ -377,6 +307,8 @@ class WebSocketServer():
         # Update clients for particular server.
         self.all_clients[server_to_update] = updated_client_list
         print(self.all_clients)
+
+        await self.broadcast_client_list()
         
 
     async def client_update_request_handler(self, websocket: ServerConnection):
@@ -478,6 +410,7 @@ class WebSocketServer():
         for client in self.clients:
             await client.send(message)
         
+        print([neighbour.websocket for neighbour in self.neighbour_connections])
         # Send public Chat Message to all servers.
         for server in self.neighbour_connections:
             # print(server.websocket != websocket)
@@ -506,9 +439,45 @@ class WebSocketServer():
 
         public_key = signed_data['public_key']
         client_connection = OlafClientConnection(websocket, public_key)
+        
         self.clients.add(client_connection)
         
         await self.send_client_update_to_neighbours()
+        
+        await self.broadcast_client_list()
+        
+        
+    async def broadcast_client_list(self) -> None:
+        """
+        Broadcasts the client list to all clients.
+        """
+                
+        # Generate client list
+        all_clients = []
+
+        for address, clients in self.all_clients.items():
+            tmp = {
+                "address" : address,
+                "clients" : clients
+            }
+            all_clients.append(tmp)
+
+        own_clients = {
+            "address" : f"{self.host}:{self.port}",
+            "clients" : [client.public_key for client in self.clients]
+        }
+        
+        servers = all_clients + [own_clients]
+
+        # Create client_list message
+        client_list = {
+            "type" : "client_list",
+            "servers" : servers
+        }
+                
+        for client in self.clients:
+            await client.send(client_list)
+    
     
     async def send_client_update_to_neighbours(self) -> None:
         """
@@ -530,6 +499,12 @@ class WebSocketServer():
         public_key = "default_key"
         server_addr = signed_data['sender']
         # websocket = await websockets.connect(server_addr)
+
+        if 'ws://' in server_addr:
+            server_addr = server_addr[5:]
+        elif 'wss://' in server_addr:
+            server_addr = server_addr[6:]
+
         neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
         self.neighbour_connections.add(neighbour_connection)
         
@@ -543,6 +518,13 @@ class WebSocketServer():
         try:
             websocket = await websockets.connect(server_addr)
             
+
+            if 'ws://' in server_addr:
+                server_addr = server_addr[5:]
+            elif 'wss://' in server_addr:
+                server_addr = server_addr[6:]
+
+
             active_neighbour_connections = [neighbour.server_addr for neighbour in self.neighbour_connections]
             if server_addr in active_neighbour_connections:
                 print(f"{server_addr} already a part of the neighbourhood. ")
@@ -586,12 +568,63 @@ class WebSocketServer():
         self.server = await serve(self.recv, self.host, self.port, ping_interval=20, ping_timeout=10)
         print(f"WebsocketServer started on ws://{self.host}:{self.port}")
 
+        app = web.Application()
+        app.router.add_post('/api/upload', self.upload_file)
+        app.router.add_get('/download/{filename}', self.download_file)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', self.http_port)
+        await site.start()
+
+        print(f"Http Server started on http://{self.host}:{self.http_port}/")
+
+
         for neighbour_addr, neighbour_public_key in self.neighbours.items():
             print(f"Scheduling connection to {neighbour_addr}...")
             # asyncio.create_task(self.connect_to_server(neighbour_addr, neighbour_public_key))
             await self.connect_to_server(neighbour_addr,neighbour_public_key)
 
         await self.server.wait_closed()
+
+    async def upload_file(self, request):
+        """
+        Add endpoint for file uploads
+        """
+        reader = await request.multipart()  # Handle multipart/form-data
+
+        # Process each part (field) in the form
+        field = await reader.next()
+    
+        if field.name == 'file':  # Look for the file part in the form
+            filename = field.filename
+            file_path = os.path.join(UPLOAD_DIR, filename)
+
+            # Save the uploaded file
+            with open(file_path, 'wb') as f:
+                while True:
+                    chunk = await field.read_chunk()  # Read file chunk by chunk
+                    if not chunk:
+                        break
+                    f.write(chunk)
+
+            file_url = f"http://{self.host}:{self.http_port}/download/{filename}"
+            return web.json_response({'file_url' : file_url})
+
+        return web.Response(text="No file found", status=400)
+    
+    async def download_file(self, request):
+        """
+        Serve filename 
+        """
+        filename = request.match_info.get('filename')
+        file_path = os.path.join(UPLOAD_DIR, filename)
+
+        if not os.path.exists(file_path):
+            return web.Response(text="File not found", status=404)
+
+        # Serve the file as an HTTP response
+        return web.FileResponse(file_path)
 
     def run(self) -> None:
         """
@@ -605,5 +638,5 @@ if __name__ == "__main__":
     neighbours = {
         "ws://localhost:8001" : "server2_key"
     }
-    ws_server = WebSocketServer('localhost', 9000)
+    ws_server = WebSocketServer('localhost', 9000, 9001, {}, 'Server_1_public_key')
     ws_server.run()
