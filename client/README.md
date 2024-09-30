@@ -38,30 +38,31 @@ Once the client has begun running, you will be prompted to enter a message type.
 
 1. Sending a public chat message
 
-`Enter message type (public, chat, clients): public`
-`Enter public chat message: Hello everyone!`
-`Sent public chat message: Hello everyone!`
+- `Enter message type (public, chat, clients): public`
+- `Enter public chat message: Hello everyone!`
+- `Sent public chat message: Hello everyone!`
 
 2. Sending a Private Chat
-   `Enter message type (public, chat, clients): chat`
-   `Enter recipient names, seperated by commas: Alice,Bob`
-   `Enter chat message: Hi guys`
-   `Sent chat message to Alice, Bob: Hi guys`
+
+   - `Enter message type (public, chat, clients): chat`
+   - `Enter recipient names, seperated by commas: Alice,Bob`
+   - `Enter chat message: Hi guys`
+   - `Sent chat message to Alice, Bob: Hi guys`
 
 3. Listing Clients
    `Enter message type (public, chat, clients): clients`
 
-`Connected clients:`
-`- Alice`
-`- Bob`
-`- Charlie`
-`- John (me)`
+- `Connected clients:`
+- `- Alice`
+- `- Bob`
+- `- Charlie`
+- `- John (me)`
 
 4. Exiting the client
 
-`Enter message type (public, chat, clients): exit`
+- `Enter message type (public, chat, clients): exit`
 
-`connection closed`
+- `connection closed`
 
 ## File structure
 

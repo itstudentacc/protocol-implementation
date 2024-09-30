@@ -10,7 +10,7 @@ import os
 KEY_SIZE_RSA = 2048
 PUBLIC_EXPONENT = 65537
 IV_SIZE = 16
-KEY_LENGTH = 32
+KEY_LENGTH = 16
 
 
 # Make class Encryption with cryptographic functions

@@ -20,7 +20,6 @@ class Client:
         self.counter = 0
         self.public_key = None
         self.private_key = None
-        self.last_counters = {} # {fingerprint: counter}
         self.received_messages = []  # Fixed typo
         self.clients = {} # {fingerprint: public_key}
         self.server_fingerprints = {} # {fingerprint: server_address}
@@ -321,44 +320,6 @@ class Client:
 
         return signed_data
     
-    def build_chat_message(self, destination_servers, recipient_public_keys, chat):
-        
-        aes_key = self.encryption.generate_aes_key()
-        iv = self.encryption.generate_iv()
-        iv_base64 = base64.b64encode(iv).decode('utf-8')
-        
-        sender_fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
-        participants = [sender_fingerprint] + [self.encryption.generate_fingerprint(public_key) for public_key in recipient_public_keys]
-        
-        chat_data = {
-            "chat": {
-                "participants": participants,
-                "message": chat
-            },
-        }
-        chat_data_json = json.dumps(chat_data)
-        
-        ciphertext, tag = self.encryption.encrypt_aes_gcm(chat_data_json.encode('utf-8'), aes_key, iv)
-        chat_base64 = base64.b64encode(ciphertext + tag).decode('utf-8')
-        
-        symm_keys = []
-        for public_key in recipient_public_keys:
-            public_key_pem = self.encryption.load_public_key(public_key)
-            encrypted_symm_key = self.encryption.encrypt_rsa(aes_key, public_key_pem)
-            encrypted_symm_key_base64 = base64.b64encode(encrypted_symm_key).decode('utf-8')
-            symm_keys.append(encrypted_symm_key_base64)
-            
-        signed_data = {
-            "type": "chat",
-            "destination_servers": destination_servers,
-            "iv": iv_base64,
-            "symm_keys": symm_keys,
-            "chat": chat_base64
-        }
-        
-        signed_data = self.build_signed_data(signed_data)
-        return signed_data
-    
     def print_clients(self):
         
         print("\nConnected clients:\n")
@@ -383,24 +344,19 @@ class Client:
     async def input_prompt(self):
         while True:
             
-            message = await aioconsole.ainput("Enter message type (public, chat, clients, upload, logbook): ")
-            if message == "public":
-                await self.request_client_list()
+            message = await aioconsole.ainput("Enter message type (public, chat, clients) (exit to exit): ")
+            if message.lower() == "public":
+                print("\n")
                 chat = await aioconsole.ainput("Enter public chat message: ")
                 await self.send_public_chat(chat)
-            elif message == "chat":
-                await self.request_client_list()
+            elif message.lower() == "chat":
                 recipients = await aioconsole.ainput("Enter recipient names, seperated by commas: ")
                 chat = await aioconsole.ainput("Enter chat message: ")
                 await self.send_chat(recipients.split(","), chat)
-            elif message == "clients":
+            elif message.lower() == "clients":
                 await self.request_client_list()
                 self.print_clients()
-            elif message == "upload":
-                self.popup_upload()
-            elif message == "logbook":
-                self.show_logbook()
-            elif message == "exit":
+            elif message.lower() == "exit":
                 await self.close()
                 break
             else:
@@ -417,7 +373,6 @@ class Client:
             # Listen for incoming messages
             asyncio.ensure_future(self.receive())
             
-            await self.request_client_list()
 
         except Exception as e:
             print(f"Failed to connect: {e}")
@@ -501,10 +456,45 @@ class Client:
         
         self.counter += 1
         
-        signed_data = self.build_chat_message(destination_servers, recipient_public_keys, chat)
+        aes_key = self.encryption.generate_aes_key()
+        iv = self.encryption.generate_iv()
+        iv_base64 = base64.b64encode(iv).decode('utf-8')
+        
+        sender_fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
+        participants = [sender_fingerprint] + [self.encryption.generate_fingerprint(public_key) for public_key in recipient_public_keys]
+        
+        chat_data = {
+            "chat": {
+                "participants": participants,
+                "message": chat
+            },
+        }
+        chat_data_json = json.dumps(chat_data)
+        
+        ciphertext, tag = self.encryption.encrypt_aes_gcm(chat_data_json.encode('utf-8'), aes_key, iv)
+        chat_base64 = base64.b64encode(ciphertext + tag).decode('utf-8')
+        
+        symm_keys = []
+        for public_key in recipient_public_keys:
+            public_key_pem = self.encryption.load_public_key(public_key)
+            encrypted_symm_key = self.encryption.encrypt_rsa(aes_key, public_key_pem)
+            encrypted_symm_key_base64 = base64.b64encode(encrypted_symm_key).decode('utf-8')
+            symm_keys.append(encrypted_symm_key_base64)
+            
+        signed_data = {
+            "type": "chat",
+            "destination_servers": destination_servers,
+            "iv": iv_base64,
+            "symm_keys": symm_keys,
+            "chat": chat_base64
+        }
+        
+        signed_data = self.build_signed_data(signed_data)
+        
         message_json = json.dumps(signed_data)
         await self.send(message_json)
-        print(f"Sent chat message to {recipients_nicknames}: {chat}")
+        print(f"Sent chat message to {', '.join(recipients_nicknames)}: {chat}")
+
 
     async def request_client_list(self):
         message = {
@@ -528,9 +518,8 @@ class Client:
             sys.exit(1)
 
     async def handle_message(self, message):
-        
-        await self.request_client_list()
-
+        "Received message"
+    
         message_type = message.get("type") or message.get("data", {}).get("type")
         
         if message_type == "signed_data":
@@ -563,7 +552,8 @@ class Client:
         if sender_fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
             sender_nickname = "me"
         
-        print(f"\nPublic chat from {sender_nickname}: {chat}")
+        print(f"\nPublic chat from {sender_nickname}: {chat}\n")
+        print(f"Enter message type (public, chat, clients): ")
 
     async def handle_client_list(self, message):
         servers = message.get("servers", [])
@@ -575,29 +565,11 @@ class Client:
                 fingerprint = self.encryption.generate_fingerprint(public_key_pem)
                 self.clients[fingerprint] = public_key_pem
                 self.server_fingerprints[fingerprint] = server_address
-    
-    def handle_file_upload(self, message):
-        data = message.get("data")
-        
-        sender_fingerprint = data.get("sender")
-        sender_nickname = self.nicknames.get(sender_fingerprint, "unknown")
-        
-        file_name = data.get("file_name")
-        file_data_base64 = data.get("file_data")
-
-        # decode base64 file data
-        file_data = base64.b64decode(file_data_base64.encode('utf-8'))
-
-        # save the file to the client's local directory
-        save_directory = filedialog.askdirectory()
-        if save_directory:
-            with open(f"{save_directory}/{file_name}", "wb") as file:
-                file.write(file_data)
-                print(f"File '{file_name}' received from {sender_nickname} and saved to {save_directory}")
-                messagebox.showinfo("Success", f"File '{file_name}' received from {sender_nickname} and saved to {save_directory}")
-        else:
-            print("File not saved")     
                 
+                for fingerprint in self.clients:
+                    if fingerprint not in self.nicknames:
+                        nickname = generate_nickname(fingerprint)
+                        self.nicknames[fingerprint] = nickname
                 
     async def handle_chat(self, message):
         data = message.get("data")
@@ -643,7 +615,9 @@ class Client:
                     }
                     self.received_messages.append(message_entry)
                     
-                    print(f"\nChat from {sender_nickname}: {message}")
+                    print(f"\nNew chat from {sender_nickname}: {message}\n")
+                    print(f"Enter message type (public, chat, clients): ")
+
                     decrypted = True
                     break
             except Exception as e:
