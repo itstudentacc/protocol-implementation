@@ -25,6 +25,7 @@ class Client:
         self.clients = {} # {fingerprint: public_key}
         self.server_fingerprints = {} # {fingerprint: server_address}
         self.nicknames = {} # {fingerprint: nickname}  
+        self.file.logbook = [] # keep track of all files received
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
         
@@ -150,22 +151,12 @@ class Client:
                     self.counter += 1
                     fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
 
-                    # Get the recipient public keys
-                    recipients = [fingerprint for fingerprint, nickname in self.nicknames.items() if nickname in self.recipients]
-                    if not recipients:
-                        messagebox.showerror("Error", "No valid recipients found.")
-                        return
-
-                    recipient_public_keys = [self.clients[fingerprint] for fingerprint in recipients]
-                    destination_servers = list({self.server_fingerprints.get(fingerprint) for fingerprint in recipients})
-
+                    # broadcast to all
                     message_data = {
                         "type": "file_upload",
                         "sender": fingerprint,
                         "file_name": self.file_path.split('/')[-1],
-                        "file_data": file_base64,
-                        "destination_servers": destination_servers,
-                        "recipients": recipients
+                        "file_data": file_base64
                     }
 
                     message = self.build_signed_data(message_data)
@@ -178,6 +169,7 @@ class Client:
                 print("File not found. Please check the file path.")
             except Exception as e:
                 messagebox.showerror("Error", f"Error uploading file: {str(e)}")
+
 
     async def close(self):
         if self.connection:
@@ -211,7 +203,7 @@ class Client:
         file_name = data.get("file_name")
         file_data_base64 = data.get("file_data")
 
-        # Decode base64 file data
+        # Decode base64 file data for potential viewing
         self.file_data = base64.b64decode(file_data_base64.encode('utf-8'))
         self.received_file_name = file_name
 
@@ -221,12 +213,15 @@ class Client:
         self.file_popup.geometry("300x200")
 
         # Display a label with the sender's information
-        label = tk.Label(self.file_popup, text=f"Receiving file from {sender_nickname}")
+        label = tk.Label(self.file_popup, text=f"New file uploaded by {sender_nickname}: {file_name}")
         label.pack(pady=10)
 
         # Add a button to open the file
         open_button = tk.Button(self.file_popup, text="Open File", command=self.open_received_file)
         open_button.pack(pady=20)
+
+        # Save file information to the logbook
+        self.save_to_logbook(file_name, file_data_base64)
 
     def open_received_file(self):
         # Create a new popup to display the content of the file
@@ -263,6 +258,43 @@ class Client:
 
         # Close the original file popup
         self.file_popup.destroy()
+    
+    def save_to_logbook(self, file_name, file_data_base64):
+        # Save the file information to the logbook
+        self.file.logbook.append({
+            "file_name": file_name,
+            "file_data": file_data_base64
+        })
+        print(f"File '{file_name}' saved to logbook")
+
+    def show_logbook(self):
+        logbook_window = tk.Toplevel()
+        logbook_window.title("Logbook")
+        logbook_window.geometry("400x400")
+
+        for file_info in self.file_logbook:
+            file_name = file_info['file_name']
+            label = tk.Label(logbook_window, text=file_name)
+            label.pack()
+
+            # Button to download the file
+            download_button = tk.Button(logbook_window, text="Download", command=lambda f=file_info: self.download_file(f))
+            download_button.pack(pady=5)
+    
+    def download_file(self, file_info):
+        file_name = file_info['file_name']
+        file_data_base64 = file_info['file_data']
+
+        file_data = base64.b64decode(file_data_base64.encode('utf-8'))
+
+        # Save the file to the client's local directory
+        save_directory = filedialog.askdirectory()
+        if save_directory:
+            with open(f"{save_directory}/{file_name}", "wb") as file:
+                file.write(file_data)
+                messagebox.showinfo("Download Complete", f"File '{file_name}' downloaded to {save_directory}")
+        else:
+            print("File not saved")
 
                     
     def parse_message(self, message):
@@ -372,6 +404,8 @@ class Client:
                 self.print_clients()
             elif message == "upload":
                 self.popup_upload()
+            elif message == "logbook":
+                self.show_logbook()
             elif message == "exit":
                 await self.close()
                 break

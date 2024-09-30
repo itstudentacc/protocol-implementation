@@ -42,6 +42,7 @@ class WebSocketServer():
         self.all_clients = {}
         self.neighbour_connections = set()
         self.server = None
+        self.file_logbook = [] # store uploaded files
         self.public_key = public_key
     
     def exisiting_client(self, websocket: ServerConnection) -> bool:
@@ -183,23 +184,17 @@ class WebSocketServer():
         await self.send(websocket, data)
 
     async def handler(self, websocket: ServerConnection, message: dict) -> None:
-        """
-        Handle websocket messages
-        """
-
-        # Check whether message meets standardised format
+        # Check whether message meets standardized format
         if not self.message_fits_standard(message):
             # Return invalid message error.
-            print(f"Unkown message type received")
+            print(f"Unknown message type received")
             err_msg = {
-                "error" : "Message does not fit OLAF Protocol standard."
+                "error": "Message does not fit OLAF Protocol standard."
             }
             await self.send(websocket, err_msg)
             return
 
         # Only valid messages from this point.
-
-        # Handle each type accordingly
         msg_type = message["type"]
         match msg_type:
             case "signed_data":
@@ -210,14 +205,93 @@ class WebSocketServer():
                 self.client_update_handler(websocket, message)
             case "client_update_request":
                 await self.client_update_request_handler(websocket)
+            case "file_upload":
+                await self.file_upload_handler(websocket, message)
+            case "logbook_request":
+                await self.logbook_request_handler(websocket)
+            case "file_download_request":
+                await self.download_file_handler(websocket, message)
             case _:
-
                 print("Unknown entity trying to communicate.")
                 err_msg = {
-                    "error" : "Connection must be established with hello / hello_server message first."
+                    "error": "Connection must be established with hello / hello_server message first."
                 }
                 await self.send(websocket, err_msg)
     
+    async def file_upload_handler(self, websocket: ServerConnection, message: dict) -> None:
+        data = message.get("data")
+        
+        sender_fingerprint = data.get("sender")
+        file_name = data.get("file_name")
+        file_data_base64 = data.get("file_data")
+
+        # Add the uploaded file to the logbook
+        self.file_logbook.append({
+            "file_name": file_name,
+            "file_data": file_data_base64,
+            "sender": sender_fingerprint
+        })
+
+        # Broadcast the file upload to all connected clients
+        broadcast_message = {
+            "type": "file_upload",
+            "data": {
+                "sender": sender_fingerprint,
+                "file_name": file_name,
+                "file_data": file_data_base64
+            }
+        }
+
+        await self.broadcast_to_all_clients(broadcast_message)
+
+    async def broadcast_to_all_clients(self, message: dict) -> None:
+        for client in self.clients:
+            await client.send(message)
+    
+    async def logbook_request_handler(self, websocket: ServerConnection) -> None:
+        # Prepare logbook data
+        logbook_data = [{
+            "file_name": entry["file_name"],
+            "sender": entry["sender"]
+        } for entry in self.file_logbook]
+
+        # Send logbook to the requesting client
+        logbook_message = {
+            "type": "logbook_response",
+            "data": {
+                "logbook": logbook_data
+            }
+        }
+
+        await self.send(websocket, logbook_message)
+
+
+    async def download_file_handler(self, websocket: ServerConnection, message: dict) -> None:
+        file_name = message["data"]["file_name"]
+        
+        # Search for the file in the logbook
+        for entry in self.file_logbook:
+            if entry["file_name"] == file_name:
+                # Send the file data to the requesting client
+                file_data_message = {
+                    "type": "file_download_response",
+                    "data": {
+                        "file_name": entry["file_name"],
+                        "file_data": entry["file_data"]
+                    }
+                }
+                await self.send(websocket, file_data_message)
+                return
+
+        # If file not found, send an error
+        error_message = {
+            "type": "error",
+            "data": {
+                "message": "File not found in the logbook."
+            }
+        }
+        await self.send(websocket, error_message)
+
     async def client_list_request_handler(self, websocket: ServerConnection) -> None:
         """
         Generates a client list and sends to the websocket that requested it.
