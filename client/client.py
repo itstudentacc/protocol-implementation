@@ -40,6 +40,13 @@ class Client:
         self.loop.run_forever()
     
     def popup_upload(self):
+         # Update the recipient list before showing the upload window
+        self.update_recipient_list()
+
+        # Check if the recipient list is empty
+        if not self.recipients_list:
+            self.recipients_list = ["No recipients available"]
+
         # Create a new tkinter window for uploading files
         self.root = tk.Tk()
         self.root.title("Chat Upload Window")
@@ -55,9 +62,7 @@ class Client:
 
         # Dropdown list for recipients
         self.recipient_var = tk.StringVar(self.root)
-        self.recipient_var.set("Select recipient")
-        self.update_recipient_list()  # Populate the dropdown list
-
+        self.recipient_var.set(self.recipients_list[0])  # Set the default value to the first item in the list
         self.recipient_menu = tk.OptionMenu(self.root, self.recipient_var, *self.recipients_list)
         self.recipient_menu.pack(pady=10)
 
@@ -223,43 +228,43 @@ class Client:
         open_button = tk.Button(self.file_popup, text="Open File", command=self.open_received_file)
         open_button.pack(pady=20)
 
-def open_received_file(self):
-    # Create a new popup to display the content of the file
-    file_viewer = tk.Toplevel()
-    file_viewer.title(f"Viewing {self.received_file_name}")
-    file_viewer.geometry("400x400")
+    def open_received_file(self):
+        # Create a new popup to display the content of the file
+        file_viewer = tk.Toplevel()
+        file_viewer.title(f"Viewing {self.received_file_name}")
+        file_viewer.geometry("400x400")
 
-    # Add a text area to show the content of the file
-    text_area = tk.Text(file_viewer, height=20, width=40)
-    text_area.pack(pady=10)
+        # Add a text area to show the content of the file
+        text_area = tk.Text(file_viewer, height=20, width=40)
+        text_area.pack(pady=10)
 
-    # Try to display the content based on the file type
-    if self.received_file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
-        try:
-            # Display image file
-            img = Image.open(io.BytesIO(self.file_data))
-            img.thumbnail((300, 300))
-            self.img = ImageTk.PhotoImage(img)
+        # Try to display the content based on the file type
+        if self.received_file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+            try:
+                # Display image file
+                img = Image.open(io.BytesIO(self.file_data))
+                img.thumbnail((300, 300))
+                self.img = ImageTk.PhotoImage(img)
 
-            # Create an image label in the text area
-            text_area.image_create(tk.END, image=self.img)
+                # Create an image label in the text area
+                text_area.image_create(tk.END, image=self.img)
 
-        except Exception as e:
-            print(f"Error displaying image: {e}")
-            messagebox.showerror("Error", f"Could not display image: {str(e)}")
-    else:
-        try:
-            # Display text file content
-            content = self.file_data.decode('utf-8', errors='ignore')
-            text_area.insert(tk.END, content)
-        except Exception as e:
-            print(f"Error displaying file content: {e}")
-            messagebox.showerror("Error", f"Could not display file content: {str(e)}")
+            except Exception as e:
+                print(f"Error displaying image: {e}")
+                messagebox.showerror("Error", f"Could not display image: {str(e)}")
+        else:
+            try:
+                # Display text file content
+                content = self.file_data.decode('utf-8', errors='ignore')
+                text_area.insert(tk.END, content)
+            except Exception as e:
+                print(f"Error displaying file content: {e}")
+                messagebox.showerror("Error", f"Could not display file content: {str(e)}")
 
-    # Close the original file popup
-    self.file_popup.destroy()
+        # Close the original file popup
+        self.file_popup.destroy()
 
-                
+                    
     def parse_message(self, message):
         try:
             message_dict = json.loads(message)
