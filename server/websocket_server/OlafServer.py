@@ -95,14 +95,15 @@ class WebSocketServer():
                     }
                     await self.send(websocket, err)
             except websockets.ConnectionClosedOK:
+                await self.disconnect(websocket)
                 break
             except websockets.exceptions.ConnectionClosed as conn_closed:
                 print(str(conn_closed))
                 print('line 91')
                 # Remove from clients / neighbours list
                 await self.disconnect(websocket)
-        
-
+                break
+                        
     async def disconnect(self, websocket: ServerConnection) -> None:
         """
         Handles a disconnection
@@ -113,22 +114,20 @@ class WebSocketServer():
             print(f"Client: {client_addr}")
 
             if websocket == client.websocket:
-                print(f"Client {client.public_key} scheduled for disconnection.")
                 tmp.append(client)
 
         for neighbour in self.neighbour_connections:
             if websocket == neighbour.websocket:
-                print(f"Neighbour {neighbour.public_key} scheduled for removal")
                 tmp.append(neighbour)
         
         for conn in tmp:
             if conn in self.clients:
                 self.clients.remove(conn)
-                print(f"Client {conn.public_key} removed.")
                 await self.send_client_update_to_neighbours()
             elif conn in self.neighbour_connections:
                 self.neighbour_connections.remove(conn)
-                print(f"Neighbour {conn.public_key} removed.")
+                        
+        await self.broadcast_client_list()
 
         await websocket.close(code=1000)
 
@@ -432,9 +431,45 @@ class WebSocketServer():
 
         public_key = signed_data['public_key']
         client_connection = OlafClientConnection(websocket, public_key)
+        
         self.clients.add(client_connection)
         
         await self.send_client_update_to_neighbours()
+        
+        await self.broadcast_client_list()
+        
+        
+    async def broadcast_client_list(self) -> None:
+        """
+        Broadcasts the client list to all clients.
+        """
+                
+        # Generate client list
+        all_clients = []
+
+        for address, clients in self.all_clients.items():
+            tmp = {
+                "address" : address,
+                "clients" : clients
+            }
+            all_clients.append(tmp)
+
+        own_clients = {
+            "address" : f"{self.host}:{self.port}",
+            "clients" : [client.public_key for client in self.clients]
+        }
+        
+        servers = all_clients + [own_clients]
+
+        # Create client_list message
+        client_list = {
+            "type" : "client_list",
+            "servers" : servers
+        }
+                
+        for client in self.clients:
+            await client.send(client_list)
+    
     
     async def send_client_update_to_neighbours(self) -> None:
         """
