@@ -4,7 +4,9 @@ import asyncio
 import aioconsole
 import websockets
 import sys
+import io
 import tkinter as tk
+from PIL import Image, ImageTk
 from tkinter import filedialog, messagebox,simpledialog
 from security.security_module import Encryption
 from nickname_generator import generate_nickname
@@ -38,10 +40,10 @@ class Client:
         self.loop.run_forever()
     
     def popup_upload(self):
-       # Create a new tkinter window for uploading files
+        # Create a new tkinter window for uploading files
         self.root = tk.Tk()
         self.root.title("Chat Upload Window")
-        self.root.geometry("400x300")
+        self.root.geometry("400x400")
 
         # Add a text area to show file content preview
         self.file_preview_text = tk.Text(self.root, height=10, width=40)
@@ -50,6 +52,14 @@ class Client:
         # Create a button for choosing a file
         choose_button = tk.Button(self.root, text="Choose File", command=self.choose_file)
         choose_button.pack(pady=10)
+
+        # Dropdown list for recipients
+        self.recipient_var = tk.StringVar(self.root)
+        self.recipient_var.set("Select recipient")
+        self.update_recipient_list()  # Populate the dropdown list
+
+        self.recipient_menu = tk.OptionMenu(self.root, self.recipient_var, *self.recipients_list)
+        self.recipient_menu.pack(pady=10)
 
         # Create a button for uploading files
         upload_button = tk.Button(self.root, text="Upload File", command=self.start_upload_file)
@@ -61,6 +71,10 @@ class Client:
         # Run the tkinter window
         self.root.mainloop()
 
+    def update_recipient_list(self):
+        # Generate a list of connected clients excluding the current user
+        self.recipients_list = [nickname for fingerprint, nickname in self.nicknames.items() if fingerprint != self.encryption.generate_fingerprint(self.public_key_pem)]
+
     def choose_file(self):
         # Prompt the user to select a file
         self.file_path = filedialog.askopenfilename()
@@ -68,21 +82,51 @@ class Client:
             print(f"File chosen: {self.file_path}")
             messagebox.showinfo("Selected File", f"Selected file: {self.file_path}")
 
-            # Preview the file content
-            with open(self.file_path, 'r') as file:
-                content = file.read(200)  # Read first 200 characters
-                self.file_preview_text.delete(1.0, tk.END)  # Clear previous content
-                self.file_preview_text.insert(tk.END, content)
+            # Clear previous content in the preview area
+            self.file_preview_text.delete(1.0, tk.END)
+            # Safely destroy img_label if it exists
+            if hasattr(self, 'img_label') and self.img_label.winfo_exists():
+                self.img_label.destroy()
+
+            # Check if the file is an image
+            if self.file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+                try:
+                    # Open the image file
+                    img = Image.open(self.file_path)
+                    img.thumbnail((200, 200))  # Resize image to fit the preview area
+                    self.img = ImageTk.PhotoImage(img)
+
+                    # Display the image inside the text box
+                    self.file_preview_text.image_create(tk.END, image=self.img)
+
+                except Exception as e:
+                    print(f"Error displaying image: {e}")
+                    messagebox.showerror("Error", f"Could not display image: {str(e)}")
+
+            else:
+                try:
+                    # Preview the text content for non-image files
+                    with open(self.file_path, 'r') as file:
+                        content = file.read(200)  # Read the first 200 characters
+                        self.file_preview_text.insert(tk.END, content)
+                except Exception as e:
+                    print(f"Error displaying file content: {e}")
+                    messagebox.showerror("Error", f"Could not display file content: {str(e)}")
 
     def start_upload_file(self):
         # Check if a file has been selected
         if hasattr(self, 'file_path') and self.file_path:
-            # Prompt for recipient nicknames
-            recipient_nicknames = simpledialog.askstring("Recipients", "Enter recipient nicknames (comma separated):")
-            if recipient_nicknames:
-                self.recipients = recipient_nicknames.split(',')
-                # Call the async upload_file method using the event loop
-                asyncio.run_coroutine_threadsafe(self.upload_file(), self.loop)
+            # Get the selected recipient from the dropdown
+            recipient_nickname = self.recipient_var.get()
+            if recipient_nickname == "Select recipient":
+                messagebox.showerror("Error", "Please select a recipient.")
+                return
+
+            # Store the selected recipient
+            self.recipients = [recipient_nickname]
+
+            # Call the async upload_file method using the event loop
+            asyncio.run_coroutine_threadsafe(self.upload_file(), self.loop)
         else:
             messagebox.showerror("Error", "No file selected. Please choose a file first.")
 
@@ -146,12 +190,74 @@ class Client:
 
     def safe_exit(self):
         # Method to safely exit the popup window and close the upload process
-        if self.root:
+        if hasattr(self, 'root') and self.root.winfo_exists():
             self.root.destroy()  # Destroy the popup window
         print("Safe exit initiated.")
-        
+
         # Close the connection and stop the loop
         asyncio.run_coroutine_threadsafe(self.close(), self.loop)
+
+    def handle_file_upload(self, message):
+        data = message.get("data")
+        
+        sender_fingerprint = data.get("sender")
+        sender_nickname = self.nicknames.get(sender_fingerprint, "unknown")
+        
+        file_name = data.get("file_name")
+        file_data_base64 = data.get("file_data")
+
+        # Decode base64 file data
+        self.file_data = base64.b64decode(file_data_base64.encode('utf-8'))
+        self.received_file_name = file_name
+
+        # Create a popup window to notify the user about the received file
+        self.file_popup = tk.Toplevel()
+        self.file_popup.title("File Received")
+        self.file_popup.geometry("300x200")
+
+        # Display a label with the sender's information
+        label = tk.Label(self.file_popup, text=f"Receiving file from {sender_nickname}")
+        label.pack(pady=10)
+
+        # Add a button to open the file
+        open_button = tk.Button(self.file_popup, text="Open File", command=self.open_received_file)
+        open_button.pack(pady=20)
+
+def open_received_file(self):
+    # Create a new popup to display the content of the file
+    file_viewer = tk.Toplevel()
+    file_viewer.title(f"Viewing {self.received_file_name}")
+    file_viewer.geometry("400x400")
+
+    # Add a text area to show the content of the file
+    text_area = tk.Text(file_viewer, height=20, width=40)
+    text_area.pack(pady=10)
+
+    # Try to display the content based on the file type
+    if self.received_file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+        try:
+            # Display image file
+            img = Image.open(io.BytesIO(self.file_data))
+            img.thumbnail((300, 300))
+            self.img = ImageTk.PhotoImage(img)
+
+            # Create an image label in the text area
+            text_area.image_create(tk.END, image=self.img)
+
+        except Exception as e:
+            print(f"Error displaying image: {e}")
+            messagebox.showerror("Error", f"Could not display image: {str(e)}")
+    else:
+        try:
+            # Display text file content
+            content = self.file_data.decode('utf-8', errors='ignore')
+            text_area.insert(tk.END, content)
+        except Exception as e:
+            print(f"Error displaying file content: {e}")
+            messagebox.showerror("Error", f"Could not display file content: {str(e)}")
+
+    # Close the original file popup
+    self.file_popup.destroy()
 
                 
     def parse_message(self, message):
