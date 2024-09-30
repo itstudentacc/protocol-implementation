@@ -5,7 +5,7 @@ import aioconsole
 import websockets
 import sys
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox,simpledialog
 from security.security_module import Encryption
 from nickname_generator import generate_nickname
 
@@ -38,53 +38,122 @@ class Client:
         self.loop.run_forever()
     
     def popup_upload(self):
-        # create new tkinter window for uploading files
+       # Create a new tkinter window for uploading files
         self.root = tk.Tk()
         self.root.title("Chat Upload Window")
-        self.root.geometry("300x200")
+        self.root.geometry("400x300")
 
-        # create a button for uploading files
-        upload_button = tk.Button(self.root, text="Upload File", command=self.upload_file)
-        upload_button.pack(pady=50)
+        # Add a text area to show file content preview
+        self.file_preview_text = tk.Text(self.root, height=10, width=40)
+        self.file_preview_text.pack(pady=10)
 
-        # run the tkinter window
+        # Create a button for choosing a file
+        choose_button = tk.Button(self.root, text="Choose File", command=self.choose_file)
+        choose_button.pack(pady=10)
+
+        # Create a button for uploading files
+        upload_button = tk.Button(self.root, text="Upload File", command=self.start_upload_file)
+        upload_button.pack(pady=10)
+
+        # Bind the close event to handle the safe exit
+        self.root.protocol("WM_DELETE_WINDOW", self.safe_exit)
+
+        # Run the tkinter window
         self.root.mainloop()
 
+    def choose_file(self):
+        # Prompt the user to select a file
+        self.file_path = filedialog.askopenfilename()
+        if self.file_path:
+            print(f"File chosen: {self.file_path}")
+            messagebox.showinfo("Selected File", f"Selected file: {self.file_path}")
+
+            # Preview the file content
+            with open(self.file_path, 'r') as file:
+                content = file.read(200)  # Read first 200 characters
+                self.file_preview_text.delete(1.0, tk.END)  # Clear previous content
+                self.file_preview_text.insert(tk.END, content)
+
+    def start_upload_file(self):
+        # Check if a file has been selected
+        if hasattr(self, 'file_path') and self.file_path:
+            # Prompt for recipient nicknames
+            recipient_nicknames = simpledialog.askstring("Recipients", "Enter recipient nicknames (comma separated):")
+            if recipient_nicknames:
+                self.recipients = recipient_nicknames.split(',')
+                # Call the async upload_file method using the event loop
+                asyncio.run_coroutine_threadsafe(self.upload_file(), self.loop)
+        else:
+            messagebox.showerror("Error", "No file selected. Please choose a file first.")
+
     async def upload_file(self):
-        file_path = filedialog.askopenfilename()
-        
-        if file_path:
+        if self.file_path:
             try:
-                with open(file_path, "rb") as file:
+                with open(self.file_path, "rb") as file:
                     file_data = file.read()
-                    
+
                     if len(file_data) > 10 * 1024 * 1024:
                         messagebox.showerror("Error", "File size exceeds 10MB")
                         return
-                    
+
                     file_base64 = base64.b64encode(file_data).decode('utf-8')
-                    
+
                     self.counter += 1
                     fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
-                    
+
+                    # Get the recipient public keys
+                    recipients = [fingerprint for fingerprint, nickname in self.nicknames.items() if nickname in self.recipients]
+                    if not recipients:
+                        messagebox.showerror("Error", "No valid recipients found.")
+                        return
+
+                    recipient_public_keys = [self.clients[fingerprint] for fingerprint in recipients]
+                    destination_servers = list({self.server_fingerprints.get(fingerprint) for fingerprint in recipients})
+
                     message_data = {
                         "type": "file_upload",
                         "sender": fingerprint,
-                        "file_name": file_path.split('/')[-1],
-                        "file_data": file_base64
+                        "file_name": self.file_path.split('/')[-1],
+                        "file_data": file_base64,
+                        "destination_servers": destination_servers,
+                        "recipients": recipients
                     }
-                    
+
                     message = self.build_signed_data(message_data)
                     message_json = json.dumps(message)
-                    
-                    asyncio.run_coroutine_threadsafe(self.send(message_json), self.loop)
-                    messagebox.showinfo("Success", f"uploaded file: {file_path}")
-                    
+
+                    await self.send(message_json)
+                    messagebox.showinfo("Success", f"Uploaded file: {self.file_path}")
+
             except FileNotFoundError:
                 print("File not found. Please check the file path.")
             except Exception as e:
                 messagebox.showerror("Error", f"Error uploading file: {str(e)}")
+
+    async def close(self):
+        if self.connection:
+            try:
+                await self.connection.close()
+                print("Connection closed")
+            except Exception as e:
+                print(f"Failed to close connection: {e}")
+            finally:
+                self.connection = None
+
+        # Stop the event loop
+        if not self.loop.is_closed():
+            self.loop.stop()
+
+    def safe_exit(self):
+        # Method to safely exit the popup window and close the upload process
+        if self.root:
+            self.root.destroy()  # Destroy the popup window
+        print("Safe exit initiated.")
         
+        # Close the connection and stop the loop
+        asyncio.run_coroutine_threadsafe(self.close(), self.loop)
+
+                
     def parse_message(self, message):
         try:
             message_dict = json.loads(message)
