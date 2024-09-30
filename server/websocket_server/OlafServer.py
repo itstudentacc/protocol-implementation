@@ -5,9 +5,13 @@ import hashlib
 import os
 import traceback
 import time
+from aiohttp import web
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve, ServerConnection
 
+# Directory to save the uploaded files
+UPLOAD_DIR = 'uploads'
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 class ConnectionHandler():
     websocket = None
@@ -33,9 +37,9 @@ class OlafClientConnection(ConnectionHandler):
         self.public_key = public_key
 
 class WebSocketServer():
-    def __init__(self, host: str ='', port: int =8000, neighbours: dict[str,str] = {}, public_key: str = "default_public_key"):
+    def __init__(self, host, ws_port, http_port, neighbours, public_key):
         self.host = host
-        self.port = port
+        self.port = ws_port
         self.server_address = f"ws://{self.host}:{self.port}"
         self.clients = set()
         self.neighbours = neighbours
@@ -43,6 +47,7 @@ class WebSocketServer():
         self.neighbour_connections = set()
         self.server = None
         self.public_key = public_key
+        self.http_port = http_port
     
     def exisiting_client(self, websocket: ServerConnection) -> bool:
         """
@@ -206,7 +211,7 @@ class WebSocketServer():
             case "client_list_request":
                 await self.client_list_request_handler(websocket)
             case "client_update":
-                self.client_update_handler(websocket, message)
+                await self.client_update_handler(websocket, message)
             case "client_update_request":
                 await self.client_update_request_handler(websocket)
             case _:
@@ -285,7 +290,7 @@ class WebSocketServer():
         print(f"All Clients: {servers}")
 
 
-    def client_update_handler(self, websocket: ServerConnection, message: dict) -> None:
+    async def client_update_handler(self, websocket: ServerConnection, message: dict) -> None:
         """
         Updates the client list for a particular server
         """
@@ -302,6 +307,8 @@ class WebSocketServer():
         # Update clients for particular server.
         self.all_clients[server_to_update] = updated_client_list
         print(self.all_clients)
+
+        await self.broadcast_client_list()
         
 
     async def client_update_request_handler(self, websocket: ServerConnection):
@@ -403,6 +410,7 @@ class WebSocketServer():
         for client in self.clients:
             await client.send(message)
         
+        print([neighbour.websocket for neighbour in self.neighbour_connections])
         # Send public Chat Message to all servers.
         for server in self.neighbour_connections:
             # print(server.websocket != websocket)
@@ -491,6 +499,12 @@ class WebSocketServer():
         public_key = "default_key"
         server_addr = signed_data['sender']
         # websocket = await websockets.connect(server_addr)
+
+        if 'ws://' in server_addr:
+            server_addr = server_addr[5:]
+        elif 'wss://' in server_addr:
+            server_addr = server_addr[6:]
+
         neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
         self.neighbour_connections.add(neighbour_connection)
         
@@ -504,6 +518,13 @@ class WebSocketServer():
         try:
             websocket = await websockets.connect(server_addr)
             
+
+            if 'ws://' in server_addr:
+                server_addr = server_addr[5:]
+            elif 'wss://' in server_addr:
+                server_addr = server_addr[6:]
+
+
             active_neighbour_connections = [neighbour.server_addr for neighbour in self.neighbour_connections]
             if server_addr in active_neighbour_connections:
                 print(f"{server_addr} already a part of the neighbourhood. ")
@@ -547,12 +568,63 @@ class WebSocketServer():
         self.server = await serve(self.recv, self.host, self.port, ping_interval=20, ping_timeout=10)
         print(f"WebsocketServer started on ws://{self.host}:{self.port}")
 
+        app = web.Application()
+        app.router.add_post('/api/upload', self.upload_file)
+        app.router.add_get('/download/{filename}', self.download_file)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', self.http_port)
+        await site.start()
+
+        print(f"Http Server started on http://{self.host}:{self.http_port}/")
+
+
         for neighbour_addr, neighbour_public_key in self.neighbours.items():
             print(f"Scheduling connection to {neighbour_addr}...")
             # asyncio.create_task(self.connect_to_server(neighbour_addr, neighbour_public_key))
             await self.connect_to_server(neighbour_addr,neighbour_public_key)
 
         await self.server.wait_closed()
+
+    async def upload_file(self, request):
+        """
+        Add endpoint for file uploads
+        """
+        reader = await request.multipart()  # Handle multipart/form-data
+
+        # Process each part (field) in the form
+        field = await reader.next()
+    
+        if field.name == 'file':  # Look for the file part in the form
+            filename = field.filename
+            file_path = os.path.join(UPLOAD_DIR, filename)
+
+            # Save the uploaded file
+            with open(file_path, 'wb') as f:
+                while True:
+                    chunk = await field.read_chunk()  # Read file chunk by chunk
+                    if not chunk:
+                        break
+                    f.write(chunk)
+
+            file_url = f"http://{self.host}:{self.http_port}/download/{filename}"
+            return web.json_response({'file_url' : file_url})
+
+        return web.Response(text="No file found", status=400)
+    
+    async def download_file(self, request):
+        """
+        Serve filename 
+        """
+        filename = request.match_info.get('filename')
+        file_path = os.path.join(UPLOAD_DIR, filename)
+
+        if not os.path.exists(file_path):
+            return web.Response(text="File not found", status=404)
+
+        # Serve the file as an HTTP response
+        return web.FileResponse(file_path)
 
     def run(self) -> None:
         """
@@ -566,5 +638,5 @@ if __name__ == "__main__":
     neighbours = {
         "ws://localhost:8001" : "server2_key"
     }
-    ws_server = WebSocketServer('localhost', 9000)
+    ws_server = WebSocketServer('localhost', 9000, 9001, {}, 'Server_1_public_key')
     ws_server.run()
