@@ -9,8 +9,8 @@ from nickname_generator import generate_nickname
 
 
 class Client:
-    def __init__(self, server_address="ws://localhost:9000"):
-        self.server_address = server_address
+    def __init__(self):
+        self.server_address = None
         self.encryption = Encryption()
         self.connection = None
         self.counter = 0
@@ -28,8 +28,11 @@ class Client:
         self.public_key_pem, self.private_key_pem = self.encryption.generate_rsa_key_pair()
         self.public_key = self.encryption.load_public_key(self.public_key_pem)
         self.private_key = self.encryption.load_private_key(self.private_key_pem)
-
         
+        chosen_server = await aioconsole.ainput("Enter server address: ")
+        
+        self.server_address = f"{chosen_server}"
+
         await self.connect()
         await self.input_prompt()
         self.loop.run_forever()
