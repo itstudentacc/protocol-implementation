@@ -9,8 +9,8 @@ from nickname_generator import generate_nickname
 
 
 class Client:
-    def __init__(self, server_address="ws://localhost:9000"):
-        self.server_address = server_address
+    def __init__(self):
+        self.server_address = None
         self.encryption = Encryption()
         self.connection = None
         self.counter = 0
@@ -28,8 +28,11 @@ class Client:
         self.public_key_pem, self.private_key_pem = self.encryption.generate_rsa_key_pair()
         self.public_key = self.encryption.load_public_key(self.public_key_pem)
         self.private_key = self.encryption.load_private_key(self.private_key_pem)
-
         
+        chosen_server = await aioconsole.ainput("Enter server address: ")
+        
+        self.server_address = f"{chosen_server}"
+
         await self.connect()
         await self.input_prompt()
         self.loop.run_forever()
@@ -79,9 +82,9 @@ class Client:
                 nickname = self.nicknames[fingerprint]
             
             if fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
-                print (f"   -{nickname} (me)")
+                print (f"   - {nickname} (me)")
             else:
-                print (f"   -{nickname}")
+                print (f"   - {nickname}")
         
         print("\n")
             
@@ -299,19 +302,32 @@ class Client:
 
     async def handle_client_list(self, message):
         servers = message.get("servers", [])
+        new_fingerprints = set()
+        
         for server in servers:
             server_address = server.get("address")
             clients_pem = server.get("clients", [])
+            
             for public_key_pem_str in clients_pem:
                 public_key_pem = public_key_pem_str.encode('utf-8')
                 fingerprint = self.encryption.generate_fingerprint(public_key_pem)
-                self.clients[fingerprint] = public_key_pem
-                self.server_fingerprints[fingerprint] = server_address
+                new_fingerprints.add(fingerprint)
                 
-                for fingerprint in self.clients:
-                    if fingerprint not in self.nicknames:
-                        nickname = generate_nickname(fingerprint)
-                        self.nicknames[fingerprint] = nickname
+                if fingerprint not in self.clients:
+                    self.clients[fingerprint] = public_key_pem
+                    self.server_fingerprints[fingerprint] = server_address
+                    
+                if fingerprint not in self.nicknames:
+                    nickname = generate_nickname(fingerprint)
+                    self.nicknames[fingerprint] = nickname
+                    
+        current_fingerprints = set(self.clients.keys())
+        missing_fingerprints = current_fingerprints - new_fingerprints
+        
+        for fingerprint in missing_fingerprints:
+            del self.clients[fingerprint]
+            del self.server_fingerprints[fingerprint]
+            del self.nicknames[fingerprint]
                 
     async def handle_chat(self, message):
         data = message.get("data")
