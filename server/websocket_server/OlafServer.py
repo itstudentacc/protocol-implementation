@@ -12,6 +12,8 @@ from websockets.asyncio.server import serve, ServerConnection
 # Directory to save the uploaded files
 UPLOAD_DIR = 'uploads'
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+FILES_DIR = 'files'
+os.makedirs(FILES_DIR, exist_ok=True)
 
 class ConnectionHandler():
     websocket = None
@@ -115,8 +117,6 @@ class WebSocketServer():
         """
         tmp = []
         for client in self.clients:
-            client_addr = f"{client.websocket.remote_address[0]}:{client.websocket.remote_address[1]}"
-            print(f"Client: {client_addr}")
 
             if websocket == client.websocket:
                 tmp.append(client)
@@ -560,6 +560,52 @@ class WebSocketServer():
             time.sleep(10)
             await self.connect_to_server(server_addr, public_key)
 
+    async def handle_file_upload(self, request):
+        reader = await request.multipart()
+        field = await reader.next()
+        if not field or field.name != 'file':
+            return web.json_response({'error': 'No file field in request'}, status=400)
+        filename = field.filename
+
+        # Set a maximum file size limit (e.g., 10 MB)
+        max_file_size = 10 * 1024 * 1024
+        size = 0
+
+        # Save the file
+        filepath = os.path.join(FILES_DIR, filename)
+        with open(filepath, 'wb') as f:
+            while True:
+                chunk = await field.read_chunk()
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > max_file_size:
+                    os.remove(filepath)
+                    return web.json_response({'error': 'File size exceeds limit'}, status=413)
+                f.write(chunk)
+
+        file_url = f"http://{self.host}:{self.http_port}/files/{filename}"
+        return web.json_response({'file_url': file_url})
+
+    async def handle_file_download(self, request):
+        filename = request.match_info['filename']
+        filepath = os.path.join(FILES_DIR, filename)
+        if not os.path.exists(filepath):
+            return web.HTTPNotFound()
+        return web.FileResponse(filepath)
+
+    async def handle_file_list(self, request):
+        files = os.listdir(FILES_DIR)
+        files.sort()
+
+        html = "<html><body><h1>Uploaded Files</h1><ul>"
+        for filename in files:
+            file_url = f"/files/{filename}"
+            html += f'<li><a href="{file_url}">{filename}</a></li>'
+        html += "</ul></body></html>"
+
+        return web.Response(text=html, content_type='text/html')
+
     async def start_server(self) -> None:
         """
         Start the websocket server
@@ -569,15 +615,16 @@ class WebSocketServer():
         print(f"WebsocketServer started on ws://{self.host}:{self.port}")
 
         app = web.Application()
-        app.router.add_post('/api/upload', self.upload_file)
-        app.router.add_get('/download/{filename}', self.download_file)
+        app.router.add_post('/api/upload', self.handle_file_upload)
+        app.router.add_get('/files/{filename}', self.handle_file_download)
+        app.router.add_get('/files', self.handle_file_list)
 
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, '0.0.0.0', self.http_port)
         await site.start()
 
-        print(f"Http Server started on http://{self.host}:{self.http_port}/")
+        print(f"HTTP Server started on http://{self.host}:{self.http_port}/")
 
 
         for neighbour_addr, neighbour_public_key in self.neighbours.items():

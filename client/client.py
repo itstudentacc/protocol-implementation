@@ -3,18 +3,22 @@ import base64
 import asyncio
 import aioconsole
 import websockets
+import logging
+import aiohttp
 import sys
-import io
-import tkinter as tk
-from PIL import Image, ImageTk
-from tkinter import filedialog, messagebox,simpledialog
+import os
 from security.security_module import Encryption
+from urllib.parse import urlparse
 from nickname_generator import generate_nickname
 
+# Configure the logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class Client:
-    def __init__(self, server_address="ws://localhost:9000"):
-        self.server_address = server_address
+    def __init__(self):
+        self.server_address = None
+        self.http_port = None  
         self.encryption = Encryption()
         self.connection = None
         self.counter = 0
@@ -23,8 +27,7 @@ class Client:
         self.received_messages = []  # Fixed typo
         self.clients = {} # {fingerprint: public_key}
         self.server_fingerprints = {} # {fingerprint: server_address}
-        self.nicknames = {} # {fingerprint: nickname}  
-        self.file_logbook = [] # keep track of all files received
+        self.nicknames = {} # {fingerprint: nickname}    
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
         
@@ -33,263 +36,18 @@ class Client:
         self.public_key_pem, self.private_key_pem = self.encryption.generate_rsa_key_pair()
         self.public_key = self.encryption.load_public_key(self.public_key_pem)
         self.private_key = self.encryption.load_private_key(self.private_key_pem)
-
         
+        chosen_server = await aioconsole.ainput("Enter server address (e.g., ws://localhost:9000): ")
+        self.server_address = f"{chosen_server}"
+        
+        # Prompt for HTTP port to use for file uploads
+        http_port = await aioconsole.ainput("Enter server HTTP port (e.g., 9001): ")
+        self.http_port = http_port
+
         await self.connect()
         await self.input_prompt()
         self.loop.run_forever()
-    
-    def popup_upload(self):
-         # Update the recipient list before showing the upload window
-        self.update_recipient_list()
 
-        # Check if the recipient list is empty
-        if not self.recipients_list:
-            self.recipients_list = ["No recipients available"]
-
-        # Create a new tkinter window for uploading files
-        self.root = tk.Tk()
-        self.root.title("Chat Upload Window")
-        self.root.geometry("400x400")
-
-        # Add a text area to show file content preview
-        self.file_preview_text = tk.Text(self.root, height=10, width=40)
-        self.file_preview_text.pack(pady=10)
-
-        # Create a button for choosing a file
-        choose_button = tk.Button(self.root, text="Choose File", command=self.choose_file)
-        choose_button.pack(pady=10)
-
-        # Create a button for uploading files
-        upload_button = tk.Button(self.root, text="Upload File", command=self.start_upload_file)
-        upload_button.pack(pady=10)
-
-        # Bind the close event to handle the safe exit
-        self.root.protocol("WM_DELETE_WINDOW", self.safe_exit)
-
-        # Run the tkinter window
-        self.root.mainloop()
-
-    def update_recipient_list(self):
-        # Generate a list of connected clients excluding the current user
-        self.recipients_list = [nickname for fingerprint, nickname in self.nicknames.items() if fingerprint != self.encryption.generate_fingerprint(self.public_key_pem)]
-
-    def choose_file(self):
-        # Prompt the user to select a file
-        self.file_path = filedialog.askopenfilename()
-        if self.file_path:
-            print(f"File chosen: {self.file_path}")
-            messagebox.showinfo("Selected File", f"Selected file: {self.file_path}")
-
-            # Clear previous content in the preview area
-            self.file_preview_text.delete(1.0, tk.END)
-            # Safely destroy img_label if it exists
-            if hasattr(self, 'img_label') and self.img_label.winfo_exists():
-                self.img_label.destroy()
-
-            # Check if the file is an image
-            if self.file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
-                try:
-                    # Open the image file
-                    img = Image.open(self.file_path)
-                    img.thumbnail((200, 200))  # Resize image to fit the preview area
-                    self.img = ImageTk.PhotoImage(img)
-
-                    # Display the image inside the text box
-                    self.file_preview_text.image_create(tk.END, image=self.img)
-
-                except Exception as e:
-                    print(f"Error displaying image: {e}")
-                    messagebox.showerror("Error", f"Could not display image: {str(e)}")
-
-            else:
-                try:
-                    # Preview the text content for non-image files
-                    with open(self.file_path, 'r') as file:
-                        content = file.read(200)  # Read the first 200 characters
-                        self.file_preview_text.insert(tk.END, content)
-                except Exception as e:
-                    print(f"Error displaying file content: {e}")
-                    messagebox.showerror("Error", f"Could not display file content: {str(e)}")
-
-    def start_upload_file(self):
-        # Check if a file has been selected
-        if hasattr(self, 'file_path') and self.file_path:
-            # Get the selected recipient from the dropdown
-            recipient_nickname = self.recipient_var.get()
-            if recipient_nickname == "Select recipient":
-                messagebox.showerror("Error", "Please select a recipient.")
-                return
-
-            # Store the selected recipient
-            self.recipients = [recipient_nickname]
-
-            # Call the async upload_file method using the event loop
-            asyncio.run_coroutine_threadsafe(self.upload_file(), self.loop)
-        else:
-            messagebox.showerror("Error", "No file selected. Please choose a file first.")
-
-    async def upload_file(self):
-        if self.file_path:
-            try:
-                with open(self.file_path, "rb") as file:
-                    file_data = file.read()
-
-                    if len(file_data) > 10 * 1024 * 1024:
-                        messagebox.showerror("Error", "File size exceeds 10MB")
-                        return
-
-                    file_base64 = base64.b64encode(file_data).decode('utf-8')
-
-                    self.counter += 1
-                    fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
-
-                    # broadcast to all
-                    message_data = {
-                        "type": "file_upload",
-                        "sender": fingerprint,
-                        "file_name": self.file_path.split('/')[-1],
-                        "file_data": file_base64
-                    }
-
-                    message = self.build_signed_data(message_data)
-                    message_json = json.dumps(message)
-
-                    await self.send(message_json)
-                    messagebox.showinfo("Success", f"Uploaded file: {self.file_path}")
-
-            except FileNotFoundError:
-                print("File not found. Please check the file path.")
-            except Exception as e:
-                messagebox.showerror("Error", f"Error uploading file: {str(e)}")
-
-
-    async def close(self):
-        if self.connection:
-            try:
-                await self.connection.close()
-                print("Connection closed")
-            except Exception as e:
-                print(f"Failed to close connection: {e}")
-            finally:
-                self.connection = None
-
-        # Stop the event loop
-        if not self.loop.is_closed():
-            self.loop.stop()
-
-    def safe_exit(self):
-        # Method to safely exit the popup window and close the upload process
-        if hasattr(self, 'root') and self.root.winfo_exists():
-            self.root.destroy()  # Destroy the popup window
-        print("Safe exit initiated.")
-
-        # Close the connection and stop the loop
-        asyncio.run_coroutine_threadsafe(self.close(), self.loop)
-
-    def handle_file_upload(self, message):
-        data = message.get("data")
-        
-        sender_fingerprint = data.get("sender")
-        sender_nickname = self.nicknames.get(sender_fingerprint, "unknown")
-        
-        file_name = data.get("file_name")
-        file_data_base64 = data.get("file_data")
-
-        # Decode base64 file data for potential viewing
-        self.file_data = base64.b64decode(file_data_base64.encode('utf-8'))
-        self.received_file_name = file_name
-
-        # Create a popup window to notify the user about the received file
-        self.file_popup = tk.Toplevel()
-        self.file_popup.title("File Received")
-        self.file_popup.geometry("300x200")
-
-        # Display a label with the sender's information
-        label = tk.Label(self.file_popup, text=f"New file uploaded by {sender_nickname}: {file_name}")
-        label.pack(pady=10)
-
-        # Add a button to open the file
-        open_button = tk.Button(self.file_popup, text="Open File", command=self.open_received_file)
-        open_button.pack(pady=20)
-
-        # Save file information to the logbook
-        self.save_to_logbook(file_name, file_data_base64)
-
-    def open_received_file(self):
-        # Create a new popup to display the content of the file
-        file_viewer = tk.Toplevel()
-        file_viewer.title(f"Viewing {self.received_file_name}")
-        file_viewer.geometry("400x400")
-
-        # Add a text area to show the content of the file
-        text_area = tk.Text(file_viewer, height=20, width=40)
-        text_area.pack(pady=10)
-
-        # Try to display the content based on the file type
-        if self.received_file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
-            try:
-                # Display image file
-                img = Image.open(io.BytesIO(self.file_data))
-                img.thumbnail((300, 300))
-                self.img = ImageTk.PhotoImage(img)
-
-                # Create an image label in the text area
-                text_area.image_create(tk.END, image=self.img)
-
-            except Exception as e:
-                print(f"Error displaying image: {e}")
-                messagebox.showerror("Error", f"Could not display image: {str(e)}")
-        else:
-            try:
-                # Display text file content
-                content = self.file_data.decode('utf-8', errors='ignore')
-                text_area.insert(tk.END, content)
-            except Exception as e:
-                print(f"Error displaying file content: {e}")
-                messagebox.showerror("Error", f"Could not display file content: {str(e)}")
-
-        # Close the original file popup
-        self.file_popup.destroy()
-    
-    def save_to_logbook(self, file_name, file_data_base64):
-        # Save the file information to the logbook
-        self.file.logbook.append({
-            "file_name": file_name,
-            "file_data": file_data_base64
-        })
-        print(f"File '{file_name}' saved to logbook")
-
-    def show_logbook(self):
-        logbook_window = tk.Toplevel()
-        logbook_window.title("Logbook")
-        logbook_window.geometry("400x400")
-
-        for file_info in self.file_logbook:
-            file_name = file_info['file_name']
-            label = tk.Label(logbook_window, text=file_name)
-            label.pack()
-
-            # Button to download the file
-            download_button = tk.Button(logbook_window, text="Download", command=lambda f=file_info: self.download_file(f))
-            download_button.pack(pady=5)
-    
-    def download_file(self, file_info):
-        file_name = file_info['file_name']
-        file_data_base64 = file_info['file_data']
-
-        file_data = base64.b64decode(file_data_base64.encode('utf-8'))
-
-        # Save the file to the client's local directory
-        save_directory = filedialog.askdirectory()
-        if save_directory:
-            with open(f"{save_directory}/{file_name}", "wb") as file:
-                file.write(file_data)
-                messagebox.showinfo("Download Complete", f"File '{file_name}' downloaded to {save_directory}")
-        else:
-            print("File not saved")
-
-                    
     def parse_message(self, message):
         try:
             message_dict = json.loads(message)
@@ -335,22 +93,69 @@ class Client:
                 nickname = self.nicknames[fingerprint]
             
             if fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
-                print (f"   -{nickname} (me)")
+                print (f"   - {nickname} (me)")
             else:
-                print (f"   -{nickname}")
+                print (f"   - {nickname}")
         
         print("\n")
+
+    async def upload_file(self, file_path):
+        # Parse server_address to extract hostname
+        parsed_url = urlparse(self.server_address)
+        server_hostname = parsed_url.hostname
+        
+        # Construct the URL using the hostname and the HTTP port
+        url = f'http://{server_hostname}:{self.http_port}/api/upload'
+        
+        async with aiohttp.ClientSession() as session:
+            with open(file_path, 'rb') as f:
+                form = aiohttp.FormData()
+                form.add_field('file', f, filename=os.path.basename(file_path))
+                async with session.post(url, data=form) as resp:
+                    if resp.status == 200:
+                        json_response = await resp.json()
+                        file_url = json_response.get('file_url')
+                        return file_url
+                    else:
+                        error_message = await resp.text()
+                        logger.error(f"File upload failed with status {resp.status}: {error_message}")
+                        return None
+                    
+    async def upload_and_share_file(self, file_path, recipients):
+        file_url = await self.upload_file(file_path)
+        if file_url:
+            message_text = f"[File] {file_url}"
+            # Send to global chat if 'global' is in recipients
+            if 'global' in recipients:
+                await self.send_public_chat(message_text)
+            # Send to private recipients
+            private_recipients = [r for r in recipients if r != 'global']
+            if private_recipients:
+                await self.send_chat(private_recipients, message_text)
+        else:
+            print("Failed to upload and share file.")
             
     async def input_prompt(self):
         while True:
-            
-            message = await aioconsole.ainput("Enter message type (public, chat, clients) (exit to exit): ")
-            if message.lower() == "public":
-                print("\n")
+            message = await aioconsole.ainput("Enter message type (public, chat, clients, /transfer) (exit to exit): ")
+            if message.lower().startswith("/transfer"):
+                # Example: /transfer path/to/file global,user1
+                parts = message.split()
+                if len(parts) < 2:
+                    print("Usage: /transfer <file> [<recipients>]")
+                    continue
+
+                file_path = parts[1]
+                recipients = parts[2:] if len(parts) > 2 else ['global']
+                if os.path.exists(file_path):
+                    await self.upload_and_share_file(file_path, recipients)
+                else:
+                    print("File does not exist.")
+            elif message.lower() == "public":
                 chat = await aioconsole.ainput("Enter public chat message: ")
                 await self.send_public_chat(chat)
             elif message.lower() == "chat":
-                recipients = await aioconsole.ainput("Enter recipient names, seperated by commas: ")
+                recipients = await aioconsole.ainput("Enter recipient names, separated by commas: ")
                 chat = await aioconsole.ainput("Enter chat message: ")
                 await self.send_chat(recipients.split(","), chat)
             elif message.lower() == "clients":
@@ -360,7 +165,7 @@ class Client:
                 await self.close()
                 break
             else:
-                print("Invalid message type")
+                print("Invalid command.")
                 
                 
     async def connect(self):
@@ -531,8 +336,6 @@ class Client:
             await self.handle_client_list(message)
         elif message_type == "chat":
             await self.handle_chat(message)
-        elif message_type == "upload_file":
-            self.handle_file_upload(message)
         else:
             print(f"Unknown message type: {message_type}")
 
@@ -557,19 +360,32 @@ class Client:
 
     async def handle_client_list(self, message):
         servers = message.get("servers", [])
+        new_fingerprints = set()
+        
         for server in servers:
             server_address = server.get("address")
             clients_pem = server.get("clients", [])
+            
             for public_key_pem_str in clients_pem:
                 public_key_pem = public_key_pem_str.encode('utf-8')
                 fingerprint = self.encryption.generate_fingerprint(public_key_pem)
-                self.clients[fingerprint] = public_key_pem
-                self.server_fingerprints[fingerprint] = server_address
+                new_fingerprints.add(fingerprint)
                 
-                for fingerprint in self.clients:
-                    if fingerprint not in self.nicknames:
-                        nickname = generate_nickname(fingerprint)
-                        self.nicknames[fingerprint] = nickname
+                if fingerprint not in self.clients:
+                    self.clients[fingerprint] = public_key_pem
+                    self.server_fingerprints[fingerprint] = server_address
+                    
+                if fingerprint not in self.nicknames:
+                    nickname = generate_nickname(fingerprint)
+                    self.nicknames[fingerprint] = nickname
+                    
+        current_fingerprints = set(self.clients.keys())
+        missing_fingerprints = current_fingerprints - new_fingerprints
+        
+        for fingerprint in missing_fingerprints:
+            del self.clients[fingerprint]
+            del self.server_fingerprints[fingerprint]
+            del self.nicknames[fingerprint]
                 
     async def handle_chat(self, message):
         data = message.get("data")
