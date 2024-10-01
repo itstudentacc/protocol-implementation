@@ -136,14 +136,24 @@ class Client:
             print("Failed to upload and share file.")
     
     async def get_uploaded_files(self):
-        url = f'http://{self.server_address}:{self.http_port}/files'
+        # Parse server_address to extract hostname
+        parsed_url = urlparse(self.server_address)
+        server_hostname = parsed_url.hostname
+
+        # Construct the URL using the hostname and the HTTP port
+        url = f'http://{server_hostname}:{self.http_port}/files'
+
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                if resp.status == 200:
-                    file_list = await resp.json()
-                    print("Uploaded files:", file_list['files'])
-                else:
-                    print(f"Failed to retrieve file list: {resp.status}")
+            try:
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        html_content = await resp.text()
+                        print("Uploaded files:")
+                        print(html_content)  # Display the HTML content for now
+                    else:
+                        print(f"Failed to retrieve file list: {resp.status}")
+            except aiohttp.ClientConnectorError as e:
+                print(f"Failed to connect to server: {e}")
 
             
     async def input_prompt(self):
