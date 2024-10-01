@@ -8,7 +8,6 @@ import time
 from aiohttp import web
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve, ServerConnection
-# from client.security.security_module import Encryption
 
 # Directory to save the uploaded files
 UPLOAD_DIR = 'uploads'
@@ -31,6 +30,7 @@ class OlafServerConnection(ConnectionHandler):
         self.websocket = websocket
         self.server_addr = server_addr
         self.public_key = public_key
+    
 
 class OlafClientConnection(ConnectionHandler):
     def __init__(self, websocket: ServerConnection, public_key: str):
@@ -51,6 +51,7 @@ class WebSocketServer():
         self.server = None
         self.public_key = public_key
         self.http_port = http_port
+
 
         self.counter = 1
         # self.encryption = Encryption()
@@ -508,6 +509,7 @@ class WebSocketServer():
         signed_data = message['data']
         public_key = "default_key"
         server_addr = signed_data['sender']
+        init_counter =  message['counter']
 
         if 'ws://' in server_addr:
             server_addr = server_addr[5:]
@@ -515,9 +517,16 @@ class WebSocketServer():
             server_addr = server_addr[6:]
 
         neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
+        neighbour_connection.counter = init_counter
         self.neighbour_connections.add(neighbour_connection)
         
         print(f"New neighbour added: {server_addr}")
+
+        client_update_request = {
+                "type" : "client_update_request"
+            }
+
+        await neighbour_connection.send(client_update_request)
 
 
     async def connect_to_server(self, server_addr: str, public_key: str) -> None:
