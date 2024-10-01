@@ -115,8 +115,6 @@ class WebSocketServer():
         """
         tmp = []
         for client in self.clients:
-            client_addr = f"{client.websocket.remote_address[0]}:{client.websocket.remote_address[1]}"
-            print(f"Client: {client_addr}")
 
             if websocket == client.websocket:
                 tmp.append(client)
