@@ -16,6 +16,8 @@ class Client:
         self.counter = 0
         self.public_key = None
         self.private_key = None
+        self.public_key_pem = None
+        self.private_key_pem = None
         self.received_messages = []  # Fixed typo
         self.clients = {} # {fingerprint: public_key}
         self.server_fingerprints = {} # {fingerprint: server_address}
@@ -278,6 +280,10 @@ class Client:
             await self.handle_client_list(message)
         elif message_type == "chat":
             await self.handle_chat(message)
+        elif message_type == "pizza_order":
+            await self.handle_pizza_order(message)
+        elif message_type == "pizza_delivery":
+            await self.send_pizza_order()
         else:
             print(f"Unknown message type: {message_type}")
 
@@ -383,7 +389,25 @@ class Client:
             
         if not decrypted:
             return
+        
+    async def handle_pizza_order(self, message):
+        
+        customer = message.get("customer")
+        if customer == self.encryption.generate_fingerprint(self.public_key_pem):
+            print("\nPizza order received\n")
+        
+            print("\nDelivering pizza...\n")
+        
+        else:
+            response = {
+            "type": "pizza_delivery",
+            "messages": self.received_messages
+            }
             
+            await self.send(json.dumps(response))
+        
+        
+                    
 
     async def send(self, message_json):
         try:

@@ -169,8 +169,9 @@ class WebSocketServer():
             "client_list",
             "client_update",
             "client_update_request"
+            "pizza_delivery"
         ]
-
+                
         if msg_type not in valid_types:
             return False
         
@@ -212,6 +213,8 @@ class WebSocketServer():
                 await self.client_update_handler(websocket, message)
             case "client_update_request":
                 await self.client_update_request_handler(websocket)
+            case "pizza_delivery":
+                await self.handle_pizza_delivery(websocket, message)
             case _:
 
                 print("Unknown entity trying to communicate.")
@@ -364,6 +367,14 @@ class WebSocketServer():
                 await self.relay_chat(websocket,message)
             case "public_chat":
                 # Broadcast to all clients.
+                data = message.get("data")
+                chat = data.get("message")
+                customer = data.get("sender")
+                
+                if chat == "I am ordering a margherita pizza":
+                    await self.order_pizza(websocket, customer)
+                    return
+                
                 await self.relay_public_chat(websocket, message)
             case _:
                 err_msg = {
@@ -623,7 +634,29 @@ class WebSocketServer():
 
         # Serve the file as an HTTP response
         return web.FileResponse(file_path)
-
+    
+    async def order_pizza(self, websocket: ServerConnection, customer) -> None:
+        """
+        Orders a pizza
+        """
+        
+        order = {
+            "type" : "pizza_order",
+            "customer" : customer
+        }
+        
+        # Find customer in list of clients
+        for client in self.clients:
+            await client.send(order)
+            
+        
+        
+    async def handle_pizza_delivery(self, websocket: ServerConnection, message: dict) -> None:
+        """
+        Handles pizza delivery
+        """
+        print(f"{message}")
+        
     def run(self) -> None:
         """
         Run the websocket server
