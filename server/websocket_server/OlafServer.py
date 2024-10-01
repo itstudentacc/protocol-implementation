@@ -570,6 +570,7 @@ class WebSocketServer():
         app.router.add_post('/api/upload', self.handle_file_upload)
         app.router.add_get('/files/{filename}', self.handle_file_download)
         app.router.add_get('/files', self.handle_file_list)
+        
 
         runner = web.AppRunner(app)
         await runner.setup()
@@ -629,16 +630,15 @@ class WebSocketServer():
         return web.FileResponse(filepath)
     
     async def handle_file_list(self, request):
-        files = os.listdir(UPLOAD_DIR)
-        files.sort()
+        """
+        Logbook of uploaded files
+        """
+        files = os.listdir(UPLOAD_DIR)  # Use the UPLOAD_DIR where files are stored
+        files.sort()  # Sort the file list
 
-        html = "<html><body><h1>Uploaded Files</h1><ul>"
-        for filename in files:
-            file_url = f"/files/{filename}"
-            html += f'<li><a href="{file_url}">{filename}</a></li>'
-        html += "</ul></body></html>"
+        # Create a JSON response with the list of files
+        return web.json_response({'files': files})
 
-        return web.Response(text=html, content_type='text/html')
 
     def run(self) -> None:
         """

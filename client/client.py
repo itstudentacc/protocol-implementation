@@ -134,12 +134,22 @@ class Client:
                 await self.send_chat(private_recipients, message_text)
         else:
             print("Failed to upload and share file.")
+    
+    async def get_uploaded_files(self):
+        url = f'http://{self.server_address}:{self.http_port}/files'
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    file_list = await resp.json()
+                    print("Uploaded files:", file_list['files'])
+                else:
+                    print(f"Failed to retrieve file list: {resp.status}")
+
             
     async def input_prompt(self):
         while True:
-            message = await aioconsole.ainput("Enter message type (public, chat, clients, /transfer) (exit to exit): ")
+            message = await aioconsole.ainput("Enter message type (public, chat, clients, /transfer , files) (exit to exit): ")
             if message.lower().startswith("/transfer"):
-                # Example: /transfer path/to/file global,user1
                 parts = message.split()
                 if len(parts) < 2:
                     print("Usage: /transfer <file> [<recipients>]")
@@ -161,6 +171,8 @@ class Client:
             elif message.lower() == "clients":
                 await self.request_client_list()
                 self.print_clients()
+            elif message.lower() == "files":
+                await self.get_uploaded_files()
             elif message.lower() == "exit":
                 await self.close()
                 break
@@ -356,7 +368,7 @@ class Client:
             sender_nickname = "me"
         
         print(f"\nPublic chat from {sender_nickname}: {chat}\n")
-        print(f"Enter message type (public, chat, clients): ")
+        print(f"Enter message type (public, chat, clients, /transfer, files): ")
 
     async def handle_client_list(self, message):
         servers = message.get("servers", [])
@@ -432,7 +444,7 @@ class Client:
                     self.received_messages.append(message_entry)
                     
                     print(f"\nNew chat from {sender_nickname}: {message}\n")
-                    print(f"Enter message type (public, chat, clients): ")
+                    print(f"Enter message type (public, chat, clients, /transfer, files): ")
 
                     decrypted = True
                     break
