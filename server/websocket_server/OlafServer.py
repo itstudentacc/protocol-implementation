@@ -12,8 +12,6 @@ from websockets.asyncio.server import serve, ServerConnection
 # Directory to save the uploaded files
 UPLOAD_DIR = 'uploads'
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-FILES_DIR = 'files'
-os.makedirs(FILES_DIR, exist_ok=True)
 
 class ConnectionHandler():
     websocket = None
@@ -560,52 +558,6 @@ class WebSocketServer():
             time.sleep(10)
             await self.connect_to_server(server_addr, public_key)
 
-    async def handle_file_upload(self, request):
-        reader = await request.multipart()
-        field = await reader.next()
-        if not field or field.name != 'file':
-            return web.json_response({'error': 'No file field in request'}, status=400)
-        filename = field.filename
-
-        # Set a maximum file size limit (e.g., 10 MB)
-        max_file_size = 10 * 1024 * 1024
-        size = 0
-
-        # Save the file
-        filepath = os.path.join(FILES_DIR, filename)
-        with open(filepath, 'wb') as f:
-            while True:
-                chunk = await field.read_chunk()
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > max_file_size:
-                    os.remove(filepath)
-                    return web.json_response({'error': 'File size exceeds limit'}, status=413)
-                f.write(chunk)
-
-        file_url = f"http://{self.host}:{self.http_port}/files/{filename}"
-        return web.json_response({'file_url': file_url})
-
-    async def handle_file_download(self, request):
-        filename = request.match_info['filename']
-        filepath = os.path.join(FILES_DIR, filename)
-        if not os.path.exists(filepath):
-            return web.HTTPNotFound()
-        return web.FileResponse(filepath)
-
-    async def handle_file_list(self, request):
-        files = os.listdir(FILES_DIR)
-        files.sort()
-
-        html = "<html><body><h1>Uploaded Files</h1><ul>"
-        for filename in files:
-            file_url = f"/files/{filename}"
-            html += f'<li><a href="{file_url}">{filename}</a></li>'
-        html += "</ul></body></html>"
-
-        return web.Response(text=html, content_type='text/html')
-
     async def start_server(self) -> None:
         """
         Start the websocket server
@@ -634,44 +586,59 @@ class WebSocketServer():
 
         await self.server.wait_closed()
 
-    async def upload_file(self, request):
+    async def handle_file_upload(self, request):
         """
         Add endpoint for file uploads
         """
-        reader = await request.multipart()  # Handle multipart/form-data
-
-        # Process each part (field) in the form
+        reader = await request.multipart()
         field = await reader.next()
+        if not field or field.name != 'file':
+            return web.json_response({'error': 'No file field in request'}, status=400)
+        filename = field.filename
+
+        # Set a maximum file size limit (e.g., 10 MB)
+        max_file_size = 10 * 1024 * 1024
+        size = 0
+
+        # Save the file
+        filepath = os.path.join(UPLOAD_DIR, filename)
+        with open(filepath, 'wb') as f:
+            while True:
+                chunk = await field.read_chunk()
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > max_file_size:
+                    os.remove(filepath)
+                    return web.json_response({'error': 'File size exceeds limit'}, status=413)
+                f.write(chunk)
+
+        file_url = f"http://{self.host}:{self.http_port}/files/{filename}"
+        return web.json_response({'file_url': file_url})
     
-        if field.name == 'file':  # Look for the file part in the form
-            filename = field.filename
-            file_path = os.path.join(UPLOAD_DIR, filename)
-
-            # Save the uploaded file
-            with open(file_path, 'wb') as f:
-                while True:
-                    chunk = await field.read_chunk()  # Read file chunk by chunk
-                    if not chunk:
-                        break
-                    f.write(chunk)
-
-            file_url = f"http://{self.host}:{self.http_port}/download/{filename}"
-            return web.json_response({'file_url' : file_url})
-
-        return web.Response(text="No file found", status=400)
-    
-    async def download_file(self, request):
+    async def handle_file_download(self, request):
         """
         Serve filename 
         """
-        filename = request.match_info.get('filename')
-        file_path = os.path.join(UPLOAD_DIR, filename)
-
-        if not os.path.exists(file_path):
-            return web.Response(text="File not found", status=404)
+        filename = request.match_info['filename']
+        filepath = os.path.join(UPLOAD_DIR, filename)
+        if not os.path.exists(filepath):
+            return web.HTTPNotFound()
 
         # Serve the file as an HTTP response
-        return web.FileResponse(file_path)
+        return web.FileResponse(filepath)
+    
+    async def handle_file_list(self, request):
+        files = os.listdir(UPLOAD_DIR)
+        files.sort()
+
+        html = "<html><body><h1>Uploaded Files</h1><ul>"
+        for filename in files:
+            file_url = f"/files/{filename}"
+            html += f'<li><a href="{file_url}">{filename}</a></li>'
+        html += "</ul></body></html>"
+
+        return web.Response(text=html, content_type='text/html')
 
     def run(self) -> None:
         """
