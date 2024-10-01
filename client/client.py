@@ -31,7 +31,7 @@ class Client:
         
         chosen_server = await aioconsole.ainput("Enter server address: ")
         
-        self.server_address = f"{chosen_server}"
+        self.server_address = f"ws://{chosen_server}"
 
         await self.connect()
         await self.input_prompt()
@@ -171,7 +171,7 @@ class Client:
         message_json = json.dumps(message)
         
         await self.send(message_json)
-        print(f"Sent public chat message: {chat}")
+        print(f"\nSent public chat message: {chat}\n")
         
         
     async def send_chat(self, recipients_nicknames, chat):
@@ -240,7 +240,7 @@ class Client:
         
         message_json = json.dumps(signed_data)
         await self.send(message_json)
-        print(f"Sent chat message to {', '.join(recipients_nicknames)}: {chat}")
+        print(f"\nSent chat message to {', '.join(recipients_nicknames)}: {chat}\n")
 
 
     async def request_client_list(self):
