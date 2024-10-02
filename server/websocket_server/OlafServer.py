@@ -677,11 +677,22 @@ class WebSocketServer():
 
 
 if __name__ == "__main__":
-    neighbours = {
-        
+    neighbours_1 = {
+        "ws://localhost:8001": "server2_key"
     }
-    ws_server = WebSocketServer('localhost', 9000, 9001, neighbours, 'Server_1_public_key')
+    ws_server_1 = WebSocketServer('localhost', 9000, 9001, neighbours_1, 'Server_1_public_key')
+    
+    # Second server instance on different ports (Neighbor server)
+    neighbours_2 = {} 
+    ws_server_2 = WebSocketServer('localhost', 8001, 8002, neighbours_2, 'Server_2_public_key')
+
+    async def start_servers():
+        await asyncio.gather(
+            ws_server_1.start_server(),
+            ws_server_2.start_server()
+        )
+
     try:
-        asyncio.run(ws_server.start_server())
+        asyncio.run(start_servers())
     except KeyboardInterrupt:
-        print("Ctrl + C Detected.. Shutting down server")
+        print("Ctrl + C Detected.. Shutting down servers")
