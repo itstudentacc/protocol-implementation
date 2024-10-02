@@ -1,6 +1,17 @@
 # Group 17 OLAF Protocol Implementation
 
-### Ivan Tranquilan, Kyle Johnston, Gregorius Baswara Wira Nuraga
+### Group members: Ivan Tranquilan, Kyle Johnston, Gregorius Baswara Wira Nuraga
+
+## DESCRIPTION
+This is a Python implementation of the OLAF's Neighbourhood protocol (https://github.com/xvk-64/2024-secure-programming-protocol), designed to facilitate secure messaging between clients and servers.
+
+## TECH STACK
+- Python 3.10/11: For the main code implementation of our clients and servers
+- WebSockets: For real time client/server communication
+- Cryptography: For encryption/decryption
+- Asyncio: Python asynchronous programming
+- Aioconsole: For asynchronous I/O for our command-line interface
+- Aiohttp: Asynchronous HTTP
 
 ## SERVER
 
