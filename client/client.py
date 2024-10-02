@@ -672,6 +672,7 @@ class Client:
                     recipient_nickname = "me"
                 
                 print(f"\n  - Chat from {sender_nickname} to {recipient_nickname}: {message_content}\n")
+                
             print(f"Enter message type (public, chat, clients, /transfer, files) (exit to exit):")
         else:
             pass

@@ -702,7 +702,13 @@ class WebSocketServer():
         }
         
         for client in self.clients:
-            await client.send(order)            
+            await client.send(order)
+            
+        for server in self.neighbour_connections:
+            if server.websocket == websocket:
+                continue
+            
+            await self.send(server.websocket, order)            
         
     async def handle_margarita_delivery(self, websocket: ServerConnection, message: dict, customer) -> None:
         """
@@ -727,6 +733,12 @@ class WebSocketServer():
                 
         for client in self.clients:
             await client.send(response)
+            
+        for server in self.neighbour_connections:
+            if server.websocket == websocket:
+                continue
+            
+            await self.send(server.websocket, response)
 
     async def start_spam(self):
         await self.print_ascii_spam()
