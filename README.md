@@ -70,10 +70,7 @@ Once the client has begun running, you will be prompted to enter a message type.
 - `- Charlie`
 - `- John (me)`
 
-4. Sending file through Public Chat or Private Chat
-
-  Files need to be within the same directory!
-
+4. Sending file through Public Chat or Private Chat (Files need to be within the same directory!)
 - File upload through public chat : `Enter message type (public, chat, clients, /transfer, files ): /transfer [file to upload]`
 - `Enter message type (public, chat, clients, /transfer, files ): /transfer file.txt`
 - `Public chat from [your username] : [file] https://localhost:9000/file/file.txt`
