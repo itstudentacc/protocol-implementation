@@ -37,6 +37,7 @@ class Client:
         self.public_key = self.encryption.load_public_key(self.public_key_pem)
         self.private_key = self.encryption.load_private_key(self.private_key_pem)
         
+
         chosen_server = await aioconsole.ainput("Enter server address (e.g., ws://localhost:9000): ")
         self.server_address = f"{chosen_server}"
         
@@ -251,7 +252,7 @@ class Client:
         message_json = json.dumps(message)
         
         await self.send(message_json)
-        print(f"Sent public chat message: {chat}")
+        print(f"\nSent public chat message: {chat}\n")
         
         
     async def send_chat(self, recipients_nicknames, chat):
@@ -320,7 +321,7 @@ class Client:
         
         message_json = json.dumps(signed_data)
         await self.send(message_json)
-        print(f"Sent chat message to {', '.join(recipients_nicknames)}: {chat}")
+        print(f"\nSent chat message to {', '.join(recipients_nicknames)}: {chat}\n")
 
 
     async def request_client_list(self):
@@ -377,8 +378,10 @@ class Client:
         if sender_fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
             sender_nickname = "me"
         
+
         print(f"\nPublic chat from {sender_nickname}: {chat}\n")
         print(f"Enter message type (public, chat, clients, /transfer, files): ")
+
 
     async def handle_client_list(self, message):
         servers = message.get("servers", [])
@@ -453,8 +456,10 @@ class Client:
                     }
                     self.received_messages.append(message_entry)
                     
+
                     print(f"\nNew chat from {sender_nickname}: {message}\n")
                     print(f"Enter message type (public, chat, clients, /transfer, files): ")
+
 
                     decrypted = True
                     break

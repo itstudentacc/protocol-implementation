@@ -8,6 +8,7 @@ import time
 from aiohttp import web
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve, ServerConnection
+# from client.security.security_module import Encryption
 
 # Directory to save the uploaded files
 UPLOAD_DIR = 'uploads'
@@ -17,13 +18,13 @@ class ConnectionHandler():
     websocket = None
     public_key = ""
     counter = 0
-
     async def send(self, message: dict) -> None:
         """
         Sends a message to the websocket
         """
         data = json.dumps(message)
         await self.websocket.send(data)
+    
 
 class OlafServerConnection(ConnectionHandler):
     def __init__(self, websocket: ServerConnection, server_addr: str, public_key: str):
@@ -41,13 +42,21 @@ class WebSocketServer():
         self.host = host
         self.port = ws_port
         self.server_address = f"ws://{self.host}:{self.port}"
+
         self.clients = set()
         self.neighbours = neighbours
         self.all_clients = {}
+
         self.neighbour_connections = set()
         self.server = None
         self.public_key = public_key
         self.http_port = http_port
+
+        self.counter = 1
+        # self.encryption = Encryption()
+
+
+        self.loop = asyncio.get_event_loop()
     
     def exisiting_client(self, websocket: ServerConnection) -> bool:
         """
@@ -89,7 +98,7 @@ class WebSocketServer():
                 message = await websocket.recv()
                 try:
                     data = json.loads(message)
-                    # print(f"Message received: {data}")
+
                     # Handle all messages
                     await self.handler(websocket, data)
 
@@ -220,6 +229,7 @@ class WebSocketServer():
                 }
                 await self.send(websocket, err_msg)
     
+     
     async def client_list_request_handler(self, websocket: ServerConnection) -> None:
         """
         Generates a client list and sends to the websocket that requested it.
@@ -413,9 +423,11 @@ class WebSocketServer():
         for server in self.neighbour_connections:
             # print(server.websocket != websocket)
             print(server.server_addr)
-            if server.websocket != websocket:
+            if server.websocket == websocket:
                 # Do not send back to the server which you received the public chat from
-                pass
+                continue
+            
+            await self.send(server.websocket, message)
 
 
     async def signed_data_handler_hello(self, websocket: ServerConnection, message: dict[str, str]) -> None:
@@ -496,7 +508,6 @@ class WebSocketServer():
         signed_data = message['data']
         public_key = "default_key"
         server_addr = signed_data['sender']
-        # websocket = await websockets.connect(server_addr)
 
         if 'ws://' in server_addr:
             server_addr = server_addr[5:]
@@ -515,21 +526,17 @@ class WebSocketServer():
         """
         try:
             websocket = await websockets.connect(server_addr)
-            
-
+        
             if 'ws://' in server_addr:
                 server_addr = server_addr[5:]
             elif 'wss://' in server_addr:
                 server_addr = server_addr[6:]
 
-
             active_neighbour_connections = [neighbour.server_addr for neighbour in self.neighbour_connections]
             if server_addr in active_neighbour_connections:
                 print(f"{server_addr} already a part of the neighbourhood. ")
                 return
-            
             neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
-           
             self.neighbour_connections.add(neighbour_connection)
             print(f"New neighbour added: {neighbour_connection.server_addr}")
             
@@ -538,12 +545,15 @@ class WebSocketServer():
                 "type" : "signed_data",
                 "data" : None
             }
-
             server_hello = {
                 "type" : "server_hello",
                 "sender" : f"{self.host}:{self.port}"
             }
             signed_data["data"] = server_hello
+            self.counter += 1
+            signed_data["counter"] = self.counter
+
+
             await neighbour_connection.send(signed_data)
 
             client_update_request = {
@@ -552,11 +562,29 @@ class WebSocketServer():
 
             await neighbour_connection.send(client_update_request)
 
+            asyncio.ensure_future(self.recv_from_server(websocket))
+
         except Exception as e:
             print(f"Failed to connect to {server_addr}: {e}")
             # Wait 10 secs before trying again.
             time.sleep(10)
             await self.connect_to_server(server_addr, public_key)
+
+    async def recv_from_server(self, websocket: ServerConnection) -> None:
+        """
+        Deal with messages coming from server.
+        """
+        try: 
+            async for message in websocket:
+                try:
+                    data = json.loads(message)
+                    await self.handler(websocket, data)
+                except json.JSONDecodeError:
+                    print(f"Unkown Message Format: { message }")
+        except Exception as e:
+            print(f"EXCEPTION: {e}")
+        finally:
+            await self.disconnect(websocket)
 
     async def start_server(self) -> None:
         """
@@ -579,13 +607,19 @@ class WebSocketServer():
 
         print(f"HTTP Server started on http://{self.host}:{self.http_port}/")
 
+        asyncio.ensure_future(self.connect_to_neighbours())
+        
+        await asyncio.Future()
 
+    async def connect_to_neighbours(self):
+        """
+        Connect to neighbours.
+        """
         for neighbour_addr, neighbour_public_key in self.neighbours.items():
             print(f"Scheduling connection to {neighbour_addr}...")
             # asyncio.create_task(self.connect_to_server(neighbour_addr, neighbour_public_key))
             await self.connect_to_server(neighbour_addr,neighbour_public_key)
 
-        await self.server.wait_closed()
 
     async def handle_file_upload(self, request):
         """
@@ -640,17 +674,14 @@ class WebSocketServer():
         return web.json_response({'files': files})
 
 
-    def run(self) -> None:
-        """
-        Run the websocket server
-        """
-        asyncio.get_event_loop().run_until_complete(self.start_server())
-        asyncio.get_event_loop().run_forever()
 
 
 if __name__ == "__main__":
     neighbours = {
         "ws://localhost:8001" : "server2_key"
     }
-    ws_server = WebSocketServer('localhost', 9000, 9001, {}, 'Server_1_public_key')
-    ws_server.run()
+    ws_server = WebSocketServer('localhost', 9000, 9001, neighbours, 'Server_1_public_key')
+    try:
+        asyncio.run(ws_server.start_server())
+    except KeyboardInterrupt:
+        print("Ctrl + C Detected.. Shutting down server")
