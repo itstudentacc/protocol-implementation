@@ -2,6 +2,8 @@
 
 ### Ivan Tranquilan, Kyle Johnston, Gregorius Baswara Wira Nuraga
 
+Make sure to run both client-side and server-side files!
+
 # OLAF Neighbourhood protocol client
 
 This is the client-side implementation of the OLAF Neighbourhood chat protocol. It supports features such as secure encrypted messaging using RSA and AES-GCM, public and private chats, and message signing for integrity verification.
@@ -113,9 +115,10 @@ This program needs the following to be installed on the system:
 
 To run an instance of the server:
 
-1. Navigate to websocket_server dir `cd websocket_server`
-2. Install the requirements `pip install -r requirements.txt`
-3. Run the network of servers `python3 OlafServer.py`
+1. Navigate to server dir `cd server`
+2. Navigate to websocket_server dir `cd websocket_server`
+3. Install the requirements `pip install -r requirements.txt`
+4. Run the network of servers `python3 OlafServer.py`
 
 # Notes
 
