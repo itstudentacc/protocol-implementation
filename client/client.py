@@ -237,7 +237,7 @@ class Client:
             None
         """
         while True:
-            message = await aioconsole.ainput("Enter message type (public, chat, clients, /transfer , files) (exit to exit): ")
+            message = await aioconsole.ainput("Enter message type (public, chat, clients, /transfer, files) (exit to exit): ")
             if message.lower().startswith("/transfer"):
                 parts = message.split()
                 if len(parts) < 2:
@@ -521,7 +521,7 @@ class Client:
             sender_nickname = "me"
         
         print(f"\n  - Public chat from {sender_nickname}: {chat}\n")
-        print(f"Enter message type (public, chat, clients, /transfer, files): ")
+        print(f"Enter message type (public, chat, clients, /transfer, files) (exit to exit):")
 
     async def handle_client_list(self, message):
         """
@@ -620,7 +620,7 @@ class Client:
                     self.received_messages.append(message_entry)
                     
                     print(f"\n  - New chat from {sender_nickname}: {message}\n")
-                    print(f"Enter message type (public, chat, clients, /transfer, files): ")
+                    print(f"Enter message type (public, chat, clients, /transfer, files) (exit to exit): ")
 
                     decrypted = True
                     break
@@ -672,9 +672,7 @@ class Client:
                     recipient_nickname = "me"
                 
                 print(f"\n  - Chat from {sender_nickname} to {recipient_nickname}: {message_content}\n")
-                
-                return
-            
+            print(f"Enter message type (public, chat, clients, /transfer, files) (exit to exit):")
         else:
             pass
             
