@@ -50,19 +50,19 @@ Once the client has begun running, you will be prompted to enter a message type.
 
 1. Sending a public chat message
 
-- `Enter message type (public, chat, clients): public`
+- `Enter message type (public, chat, clients, /transfer, files): public`
 - `Enter public chat message: Hello everyone!`
 - `Sent public chat message: Hello everyone!`
 
 2. Sending a Private Chat
 
-   - `Enter message type (public, chat, clients): chat`
+   - `Enter message type (public, chat, clients, /transfer, files): chat`
    - `Enter recipient names, seperated by commas: Alice,Bob`
    - `Enter chat message: Hi guys`
    - `Sent chat message to Alice, Bob: Hi guys`
 
 3. Listing Clients
-   `Enter message type (public, chat, clients): clients`
+   `Enter message type (public, chat, clients, /transfer, files): clients`
 
 - `Connected clients:`
 - `- Alice`
@@ -81,13 +81,13 @@ Once the client has begun running, you will be prompted to enter a message type.
 
 5. View uploaded files
 
-- `Enter message type (public, chat, clients, /transfer, files ): files`
+- `Enter message type (public, chat, clients, /transfer, files): files`
 - `Uploaded files:`
 - `{"files": ["file.txt"]}`
 
 6. Exiting the client
 
-- `Enter message type (public, chat, clients): exit`
+- `Enter message type (public, chat, clients, /transfer, files): exit`
 
 - `connection closed`
 
@@ -99,7 +99,7 @@ Once the client has begun running, you will be prompted to enter a message type.
 
 - nickname_generator.py: Generates nicknames based on their fingerprints for easier identification of clients.
 
-# OLAF Neighbourhood  Protocol Server
+# OLAF Neighbourhood Protocol Server
 
 This is tested in WSL Ubuntu 22.04
 
