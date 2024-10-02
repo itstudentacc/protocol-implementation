@@ -2,7 +2,7 @@
 
 ### Ivan Tranquilan, Kyle Johnston, Gregorius Baswara Wira Nuraga
 
-Make sure to run both client-side and server-side files!
+## To ensure OLAF Chat Protocol is working, please follow the steps below!
 
 # OLAF Neighbourhood protocol client
 
