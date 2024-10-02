@@ -2,7 +2,7 @@
 
 ### Ivan Tranquilan, Kyle Johnston, Gregorius Baswara Wira Nuraga
 
-## To ensure OLAF Chat Protocol is working, please follow the steps below!
+### To ensure OLAF Chat Protocol is working, please follow the steps below!
 
 # OLAF Neighbourhood protocol client
 
