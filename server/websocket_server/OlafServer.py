@@ -177,7 +177,9 @@ class WebSocketServer():
             "client_list_request",
             "client_list",
             "client_update",
-            "client_update_request"
+            "client_update_request",
+            "margarita_order",
+            "margarita_delivery",
         ]
                 
         if msg_type not in valid_types:
@@ -202,6 +204,7 @@ class WebSocketServer():
         if not self.message_fits_standard(message):
             # Return invalid message error.
             print(f"Unkown message type received")
+            print(message)
             err_msg = {
                 "error" : "Message does not fit OLAF Protocol standard."
             }
@@ -221,6 +224,10 @@ class WebSocketServer():
                 await self.client_update_handler(websocket, message)
             case "client_update_request":
                 await self.client_update_request_handler(websocket)
+            case "margarita_order":
+                await self.order_margarita(websocket, message)
+            case "margarita_delivery":
+                await self.server_margarita_delivery(message)
             case _:
 
                 print("Unknown entity trying to communicate.")
@@ -708,7 +715,8 @@ class WebSocketServer():
             if server.websocket == websocket:
                 continue
             
-            await self.send(server.websocket, order)            
+            await self.send(server.websocket, order)
+            
         
     async def handle_margarita_delivery(self, websocket: ServerConnection, message: dict, customer) -> None:
         """
@@ -722,6 +730,9 @@ class WebSocketServer():
         
         for msg in messages:
             msg['recipient'] = recipient
+            
+        if isinstance(customer, dict):
+            customer = customer.get("customer")
                         
         response = {
             "type" : "margarita_delivery",
@@ -737,8 +748,16 @@ class WebSocketServer():
         for server in self.neighbour_connections:
             if server.websocket == websocket:
                 continue
-            
             await self.send(server.websocket, response)
+    
+    async def server_margarita_delivery(self, response: str) -> None:
+        """
+        Delivers margarita to a customer
+        """
+        print(f"received margarita delivery: {response}")
+        for client in self.clients:
+            await client.send(response)
+        
 
     async def start_spam(self):
         await self.print_ascii_spam()
