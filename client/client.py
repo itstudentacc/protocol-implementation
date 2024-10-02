@@ -3,14 +3,22 @@ import base64
 import asyncio
 import aioconsole
 import websockets
+import logging
+import aiohttp
 import sys
+import os
 from security.security_module import Encryption
+from urllib.parse import urlparse
 from nickname_generator import generate_nickname
 
+# Configure the logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class Client:
     def __init__(self):
         self.server_address = None
+        self.http_port = None  
         self.encryption = Encryption()
         self.connection = None
         self.counter = 0
@@ -19,7 +27,7 @@ class Client:
         self.received_messages = []  # Fixed typo
         self.clients = {} # {fingerprint: public_key}
         self.server_fingerprints = {} # {fingerprint: server_address}
-        self.nicknames = {} # {fingerprint: nickname}  
+        self.nicknames = {} # {fingerprint: nickname}    
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
         
@@ -29,9 +37,13 @@ class Client:
         self.public_key = self.encryption.load_public_key(self.public_key_pem)
         self.private_key = self.encryption.load_private_key(self.private_key_pem)
         
-        chosen_server = await aioconsole.ainput("Enter server address: ")
+
+        chosen_server = await aioconsole.ainput("Enter server address (e.g., ws://localhost:9000): ")
+        self.server_address = f"{chosen_server}"
         
-        self.server_address = f"ws://{chosen_server}"
+        # Prompt for HTTP port to use for file uploads
+        http_port = await aioconsole.ainput("Enter server HTTP port (e.g., 9001): ")
+        self.http_port = http_port
 
         await self.connect()
         await self.input_prompt()
@@ -87,27 +99,96 @@ class Client:
                 print (f"   - {nickname}")
         
         print("\n")
+
+    async def upload_file(self, file_path):
+        # Parse server_address to extract hostname
+        parsed_url = urlparse(self.server_address)
+        server_hostname = parsed_url.hostname
+        
+        # Construct the URL using the hostname and the HTTP port
+        url = f'http://{server_hostname}:{self.http_port}/api/upload'
+        
+        async with aiohttp.ClientSession() as session:
+            with open(file_path, 'rb') as f:
+                form = aiohttp.FormData()
+                form.add_field('file', f, filename=os.path.basename(file_path))
+                async with session.post(url, data=form) as resp:
+                    if resp.status == 200:
+                        json_response = await resp.json()
+                        file_url = json_response.get('file_url')
+                        return file_url
+                    else:
+                        error_message = await resp.text()
+                        logger.error(f"File upload failed with status {resp.status}: {error_message}")
+                        return None
+                    
+    async def upload_and_share_file(self, file_path, recipients):
+        file_url = await self.upload_file(file_path)
+        if file_url:
+            message_text = f"[File] {file_url}"
+            # Send to global chat if 'global' is in recipients
+            if 'global' in recipients:
+                await self.send_public_chat(message_text)
+            # Send to private recipients
+            private_recipients = [r for r in recipients if r != 'global']
+            if private_recipients:
+                await self.send_chat(private_recipients, message_text)
+        else:
+            print("Failed to upload and share file.")
+    
+    async def get_uploaded_files(self):
+        # Parse server_address to extract hostname
+        parsed_url = urlparse(self.server_address)
+        server_hostname = parsed_url.hostname
+
+        # Construct the URL using the hostname and the HTTP port
+        url = f'http://{server_hostname}:{self.http_port}/files'
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        html_content = await resp.text()
+                        print("Uploaded files:")
+                        print(html_content)  # Display the HTML content for now
+                    else:
+                        print(f"Failed to retrieve file list: {resp.status}")
+            except aiohttp.ClientConnectorError as e:
+                print(f"Failed to connect to server: {e}")
+
             
     async def input_prompt(self):
         while True:
-            
-            message = await aioconsole.ainput("Enter message type (public, chat, clients) (exit to exit): ")
-            if message.lower() == "public":
-                print("\n")
+            message = await aioconsole.ainput("Enter message type (public, chat, clients, /transfer , files) (exit to exit): ")
+            if message.lower().startswith("/transfer"):
+                parts = message.split()
+                if len(parts) < 2:
+                    print("Usage: /transfer <file> [<recipients>]")
+                    continue
+
+                file_path = parts[1]
+                recipients = parts[2:] if len(parts) > 2 else ['global']
+                if os.path.exists(file_path):
+                    await self.upload_and_share_file(file_path, recipients)
+                else:
+                    print("File does not exist.")
+            elif message.lower() == "public":
                 chat = await aioconsole.ainput("Enter public chat message: ")
                 await self.send_public_chat(chat)
             elif message.lower() == "chat":
-                recipients = await aioconsole.ainput("Enter recipient names, seperated by commas: ")
+                recipients = await aioconsole.ainput("Enter recipient names, separated by commas: ")
                 chat = await aioconsole.ainput("Enter chat message: ")
                 await self.send_chat(recipients.split(","), chat)
             elif message.lower() == "clients":
                 await self.request_client_list()
                 self.print_clients()
+            elif message.lower() == "files":
+                await self.get_uploaded_files()
             elif message.lower() == "exit":
                 await self.close()
                 break
             else:
-                print("Invalid message type")
+                print("Invalid command.")
                 
                 
     async def connect(self):
@@ -297,8 +378,10 @@ class Client:
         if sender_fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
             sender_nickname = "me"
         
-        print(f"\n  - Public chat from {sender_nickname}: {chat}\n")
-        print(f"Enter message type (public, chat, clients) (exit to exit): ")
+
+        print(f"\nPublic chat from {sender_nickname}: {chat}\n")
+        print(f"Enter message type (public, chat, clients, /transfer, files): ")
+
 
     async def handle_client_list(self, message):
         servers = message.get("servers", [])
@@ -373,8 +456,10 @@ class Client:
                     }
                     self.received_messages.append(message_entry)
                     
-                    print(f"\n  - New chat from {sender_nickname}: {message}\n")
-                    print(f"Enter message type (public, chat, clients) (exit to exit): ")
+
+                    print(f"\nNew chat from {sender_nickname}: {message}\n")
+                    print(f"Enter message type (public, chat, clients, /transfer, files): ")
+
 
                     decrypted = True
                     break
