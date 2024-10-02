@@ -51,14 +51,17 @@ class Client:
         self.private_key = self.encryption.load_private_key(self.private_key_pem)
         
         # Prompt for server address
-        chosen_server = await aioconsole.ainput("Enter server address (e.g., ws://localhost:9000): ")
-        self.server_address = f"{chosen_server}"
+        chosen_server = await aioconsole.ainput("Enter WebSocket server address (e.g., localhost:9000): ")
+        self.server_address = f"ws://{chosen_server}"
         
         # Prompt for HTTP port to use for file uploads
         http_port = await aioconsole.ainput("Enter server HTTP port (e.g., 9001): ")
         self.http_port = http_port
 
         await self.connect()
+        
+        my_nickname = generate_nickname(self.encryption.generate_fingerprint(self.public_key_pem))
+        print(f"\nYour nickname is: {my_nickname}\n")
         await self.input_prompt()
         self.loop.run_forever()
 
@@ -511,7 +514,7 @@ class Client:
         if sender_fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
             sender_nickname = "me"
         
-        print(f"\nPublic chat from {sender_nickname}: {chat}\n")
+        print(f"\n  - Public chat from {sender_nickname}: {chat}\n")
         print(f"Enter message type (public, chat, clients, /transfer, files): ")
 
 
@@ -612,7 +615,7 @@ class Client:
                     self.received_messages.append(message_entry)
                     
 
-                    print(f"\nNew chat from {sender_nickname}: {message}\n")
+                    print(f"\n  - New chat from {sender_nickname}: {message}\n")
                     print(f"Enter message type (public, chat, clients, /transfer, files): ")
 
 
