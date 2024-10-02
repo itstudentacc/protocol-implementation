@@ -8,7 +8,7 @@ import time
 from aiohttp import web
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve, ServerConnection
-from client.security.security_module import Encryption
+from security_module import Encryption
 
 # Directory to save the uploaded files
 UPLOAD_DIR = 'uploads'
@@ -672,8 +672,6 @@ class WebSocketServer():
 
         # Create a JSON response with the list of files
         return web.json_response({'files': files})
-
-
 
 
 if __name__ == "__main__":
