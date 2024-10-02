@@ -40,7 +40,7 @@ Once the client has begun running, you will be prompted to enter a message type.
 
 - Clients: lists all currently connected client, by nickname
 
-- /transfer: Sends a file to the server. You will need to enter the file name and the recipient's nickname (if sending privately)
+- /transfer: Sends a file to the server. You will need to enter the file name and the recipient's nickname (if sending privately). You can __download__ the files by clicking the link on the message
 
 - Files: Lists all files uploaded to the server
 
