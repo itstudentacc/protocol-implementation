@@ -178,7 +178,6 @@ class WebSocketServer():
             "client_list",
             "client_update",
             "client_update_request"
-            "pizza_delivery"
         ]
                 
         if msg_type not in valid_types:
@@ -222,8 +221,6 @@ class WebSocketServer():
                 await self.client_update_handler(websocket, message)
             case "client_update_request":
                 await self.client_update_request_handler(websocket)
-            case "pizza_delivery":
-                await self.handle_pizza_delivery(websocket, message)
             case _:
 
                 print("Unknown entity trying to communicate.")
@@ -337,7 +334,7 @@ class WebSocketServer():
     async def signed_data_handler(self, websocket: ServerConnection, message: dict) -> None:
         """
         Handles all signed_data
-        """
+        """        
         try:
             signed_data = message['data']
             signed_data_type = signed_data['type']
@@ -386,6 +383,9 @@ class WebSocketServer():
                     return
                 
                 await self.relay_public_chat(websocket, message)
+            case "pizza_delivery":
+                customer = message.get("customer")
+                await self.handle_pizza_delivery(websocket, message, customer)
             case _:
                 err_msg = {
                     "error" : "Invalid data type from established connection"
@@ -679,24 +679,35 @@ class WebSocketServer():
             "customer" : customer
         }
         
-        # Find customer in list of clients
         for client in self.clients:
-            await client.send(order)
-            
+            await client.send(order)            
         
-        
-    async def handle_pizza_delivery(self, websocket: ServerConnection, message: dict) -> None:
+    async def handle_pizza_delivery(self, websocket: ServerConnection, message: dict, customer) -> None:
         """
         Handles pizza delivery
         """
-        print(f"{message}")
+        data = message.get("data")
         
-
+        messages = data.get("messages")
+        
+        recipient = data.get("recipient")
+        
+        for msg in messages:
+            msg['recipient'] = recipient
+                        
+        response = {
+            "type" : "pizza_delivery",
+            "data" : {
+                "messages" : messages
+            },
+            "customer" : customer
+        }
+                
+        for client in self.clients:
+            await client.send(response)
 
 if __name__ == "__main__":
-    neighbours = {
-        "ws://localhost:8001" : "server2_key"
-    }
+    neighbours = {}
     ws_server = WebSocketServer('localhost', 9000, 9001, neighbours, 'Server_1_public_key')
     try:
         asyncio.run(ws_server.start_server())

@@ -283,7 +283,7 @@ class Client:
         elif message_type == "pizza_order":
             await self.handle_pizza_order(message)
         elif message_type == "pizza_delivery":
-            await self.send_pizza_order()
+            await self.handle_pizza_delivery(message)
         else:
             print(f"Unknown message type: {message_type}")
 
@@ -397,18 +397,47 @@ class Client:
             print("\nPizza order received\n")
         
             print("\nDelivering pizza...\n")
+            
         
         else:
             response = {
-            "type": "pizza_delivery",
-            "messages": self.received_messages
+            "type": "signed_data",
+            "data": {
+                "type": "pizza_delivery",
+                "messages": self.received_messages,
+                "recipient": self.encryption.generate_fingerprint(self.public_key_pem)
+                },
+            "customer": customer
             }
-            
             await self.send(json.dumps(response))
+            
+    async def handle_pizza_delivery(self, message):
+        customer = message.get("customer")
         
-        
-                    
-
+        if customer == self.encryption.generate_fingerprint(self.public_key_pem):
+                        
+            data = message.get("data")
+            messages = data.get("messages", [])
+            
+            
+            for message in messages:
+                sender = message.get("sender")
+                recipient = message.get("recipient")
+                message_content = message.get("message")
+                sender_nickname = self.nicknames.get(sender)
+                recipient_nickname = self.nicknames.get(recipient)
+                if sender == self.encryption.generate_fingerprint(self.public_key_pem):
+                    sender_nickname = "me"
+                if recipient == self.encryption.generate_fingerprint(self.public_key_pem):
+                    recipient_nickname = "me"
+                
+                print(f"\nChat from {sender_nickname} to {recipient_nickname}: {message_content}\n")
+                
+                return
+            
+        else:
+            pass
+            
     async def send(self, message_json):
         try:
             await self.connection.send(message_json)
