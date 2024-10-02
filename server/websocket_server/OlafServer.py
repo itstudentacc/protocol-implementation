@@ -8,7 +8,7 @@ import time
 from aiohttp import web
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve, ServerConnection
-# from client.security.security_module import Encryption
+from client.security.security_module import Encryption
 
 # Directory to save the uploaded files
 UPLOAD_DIR = 'uploads'
@@ -677,19 +677,19 @@ class WebSocketServer():
 
 
 if __name__ == "__main__":
+    encryption = Encryption()
     neighbours_1 = {
-        "ws://localhost:8001": "server2_key"
+        "ws://203.221.52.227:8766": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1HnsMipScA8+XIDff+JpmvPZZWaJXURO6jexrAU7tetiwXJUBKuYi2yswGm1zw1Z5EgRrO/T/FkXomi1QS1O16qKX3lSPFJT9EQQUMkxQ8uBRcyTdIztoFhHyl9BAfdpgaDXUZm2YUbl1Nfsxf70K6yFUG4VszAFm6lO5fGM742tRtLh/GuucuBxBHoj5okqrpm+Rtag6jhqgi5BOY4fy5tZff+CRf065t1ttdzfBxwxvk+PdlBd/HLS/ODRDRJ5+6f+yRT7u8EsH1oj1WRONlYUQfPquJRvGlRqKTxAP4PG++TdredHf1Dbwye4O9ZhsRPY0OohO4feNnbKUTwEPwIDAQAB"
     }
-    ws_server_1 = WebSocketServer('localhost', 9000, 9001, neighbours_1, 'Server_1_public_key')
     
-    # Second server instance on different ports (Neighbor server)
-    neighbours_2 = {} 
-    ws_server_2 = WebSocketServer('localhost', 8001, 8002, neighbours_2, 'Server_2_public_key')
+    public_key, private_key = encryption.generate_rsa_key_pair()
+    ws_server_1 = WebSocketServer('localhost', 9000, 9001, neighbours_1, public_key)
+    
+    print(f"Public Key: {public_key}")
 
     async def start_servers():
         await asyncio.gather(
             ws_server_1.start_server(),
-            ws_server_2.start_server()
         )
 
     try:
