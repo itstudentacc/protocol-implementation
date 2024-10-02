@@ -99,7 +99,7 @@ Once the client has begun running, you will be prompted to enter a message type.
 
 - nickname_generator.py: Generates nicknames based on their fingerprints for easier identification of clients.
 
-# OLAF Protocol Server
+# OLAF Neighbourhood  Protocol Server
 
 This is tested in WSL Ubuntu 22.04
 
