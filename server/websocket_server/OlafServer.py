@@ -780,7 +780,7 @@ class WebSocketServer():
         while True:
             for client in self.clients:
                 await client.send(spam_message)
-            await asyncio.sleep(0.01)  
+            await asyncio.sleep(0.1)  
 
 if __name__ == "__main__":
     neighbours_1 = {
