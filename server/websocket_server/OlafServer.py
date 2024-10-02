@@ -678,7 +678,7 @@ class WebSocketServer():
 
 if __name__ == "__main__":
     neighbours = {
-        "ws://localhost:8001" : "server2_key"
+        
     }
     ws_server = WebSocketServer('localhost', 9000, 9001, neighbours, 'Server_1_public_key')
     try:

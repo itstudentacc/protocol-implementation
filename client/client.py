@@ -24,7 +24,7 @@ class Client:
         self.counter = 0
         self.public_key = None
         self.private_key = None
-        self.received_messages = []  # Fixed typo
+        self.received_messages = []
         self.clients = {} # {fingerprint: public_key}
         self.server_fingerprints = {} # {fingerprint: server_address}
         self.nicknames = {} # {fingerprint: nickname}    
@@ -32,12 +32,25 @@ class Client:
         asyncio.set_event_loop(self.loop)
         
     async def start(self):
+        """
+        Initializes the client by generating RSA key pairs, prompting for server 
+        address and HTTP port, connecting to the WebSocket server, and starting the event loop.
+
+        Tasks:
+        - Generates and loads RSA key pair.
+        - Prompts user for WebSocket server address and HTTP port.
+        - Establishes WebSocket connection and runs the input prompt.
+
+        Args:
+            self: Instance containing encryption methods and connection details.
+        """
+        
         # Generate RSA key pair
         self.public_key_pem, self.private_key_pem = self.encryption.generate_rsa_key_pair()
         self.public_key = self.encryption.load_public_key(self.public_key_pem)
         self.private_key = self.encryption.load_private_key(self.private_key_pem)
         
-
+        # Prompt for server address
         chosen_server = await aioconsole.ainput("Enter server address (e.g., ws://localhost:9000): ")
         self.server_address = f"{chosen_server}"
         
@@ -50,6 +63,16 @@ class Client:
         self.loop.run_forever()
 
     def parse_message(self, message):
+        """
+        Parses an incoming message string into a JSON object.
+
+        Args:
+        message: The message string to be parsed.
+
+        Returns:
+        A tuple containing the parsed JSON object and None on success, 
+        or None and an error message if parsing fails.
+        """
         try:
             message_dict = json.loads(message)
             return message_dict, None
@@ -57,6 +80,9 @@ class Client:
             return None, f"Error parsing JSON: {str(e)}"
 
     def build_signed_data(self, data):
+        """
+        Build a signed message with the given data
+        """
         message = {
             "data": data,
             "counter": self.counter
@@ -80,6 +106,9 @@ class Client:
         return signed_data
     
     def print_clients(self):
+        """
+        Print the connected clients
+        """
         
         print("\nConnected clients:\n")
         
@@ -101,6 +130,16 @@ class Client:
         print("\n")
 
     async def upload_file(self, file_path):
+        """
+        Uploads a file to the server.
+
+        Args:
+            file_path: The path to the file to be uploaded.
+
+        Returns:
+            The URL of the uploaded file if successful, or None if the upload fails.
+        """
+        
         # Parse server_address to extract hostname
         parsed_url = urlparse(self.server_address)
         server_hostname = parsed_url.hostname
@@ -123,6 +162,17 @@ class Client:
                         return None
                     
     async def upload_and_share_file(self, file_path, recipients):
+        """
+        Uploads a file and shares its URL with specified recipients.
+
+        Args:
+            file_path: The path to the file to be uploaded.
+            recipients: A list of recipients to share the file with, 
+                    including 'global' for public sharing.
+
+        Returns:
+            None
+        """
         file_url = await self.upload_file(file_path)
         if file_url:
             message_text = f"[File] {file_url}"
@@ -137,6 +187,16 @@ class Client:
             print("Failed to upload and share file.")
     
     async def get_uploaded_files(self):
+        """
+        Retrieve the list of uploaded files from the server
+        
+        Constructs a request to the server to retrieve the list of uploaded files.
+        
+        Returns:
+            None
+        """
+        
+        
         # Parse server_address to extract hostname
         parsed_url = urlparse(self.server_address)
         server_hostname = parsed_url.hostname
@@ -158,6 +218,19 @@ class Client:
 
             
     async def input_prompt(self):
+        """
+        Prompt the user for input commands and processes them
+        
+        Continuously listens for user commands to perform actions such as:
+        - Uploading and sharing files
+        - Sending public and private chat messages
+        - Requesting a list of clients
+        - Retrieving uploaded files
+        - Exiting the application
+
+        Returns:
+            None
+        """
         while True:
             message = await aioconsole.ainput("Enter message type (public, chat, clients, /transfer , files) (exit to exit): ")
             if message.lower().startswith("/transfer"):
@@ -192,6 +265,13 @@ class Client:
                 
                 
     async def connect(self):
+        """
+        Connects to the WebSocket server
+        
+        Establishes a connection to the server, sends greeting message,
+        and starts listening for incoming messages.
+        """
+        
         try:
             self.connection = await websockets.connect(self.server_address)
             print(f"Connected to {self.server_address}")
@@ -207,6 +287,12 @@ class Client:
             sys.exit(1)
 
     async def close(self):
+        """
+        Closes the connection to the WebSocket server
+        
+        Attempts to close connection gracefully and exits the application.
+        """
+        
         if self.connection:
             try:
                 await self.connection.close()
@@ -218,6 +304,12 @@ class Client:
                 self.connection = None
 
     async def send_hello(self):
+        """
+        Send a hello message to the server.
+        
+        Increments message counter and sends public key as part of the hello message.
+        """
+        
         self.counter += 1
         
         public_pem = self.public_key_pem.decode('utf-8')
@@ -237,6 +329,16 @@ class Client:
         
 
     async def send_public_chat(self, chat):
+        """
+        Sends a public chat message
+        
+        Increments the message counter and sends a signed message
+        containing the chat message.
+        
+        Args:
+            chat: The chat message to be sent.
+
+        """
         self.counter += 1
         
         fingerprint = self.encryption.generate_fingerprint(self.public_key_pem)
@@ -256,6 +358,17 @@ class Client:
         
         
     async def send_chat(self, recipients_nicknames, chat):
+        """
+        Send a chat message to the specified recipients.
+        
+        Validates the recipients, encrypts the chat message, and
+        sends it to the appropriate servers.
+        
+        Args:
+            recipients_nicknames: A list of recipient nicknames.
+            chat: The chat message to be sent.
+        
+        """
         
         recipients = [fingerprint for fingerprint, nickname in self.nicknames.items() if nickname in recipients_nicknames]
                     
@@ -325,6 +438,9 @@ class Client:
 
 
     async def request_client_list(self):
+        """
+        Request the list of connected clients from the server
+        """
         message = {
             "type": "client_list_request"
         }
@@ -346,8 +462,16 @@ class Client:
             sys.exit(1)
 
     async def handle_message(self, message):
-        "Received message"
-    
+        """
+        Processes incoming messages based on their type.
+        
+        Extracts the message type and calls the appropriate handler function.
+        
+        Args:
+            message: The incoming message to be processed.
+            
+        """
+        
         message_type = message.get("type") or message.get("data", {}).get("type")
         
         if message_type == "signed_data":
@@ -363,6 +487,15 @@ class Client:
             print(f"Unknown message type: {message_type}")
 
     async def handle_public_chat(self, message):
+        """
+        Processes a public chat message.
+        
+        Extracts the sender fingerprint and chat message from the data,
+        and prints the message to the console.
+        
+        Args:
+            message: The incoming message containing the chat data.
+        """
         data = message.get("data")  
         
         sender_fingerprint = data.get("sender")
@@ -378,12 +511,23 @@ class Client:
         if sender_fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
             sender_nickname = "me"
         
-
         print(f"\nPublic chat from {sender_nickname}: {chat}\n")
         print(f"Enter message type (public, chat, clients, /transfer, files): ")
 
 
     async def handle_client_list(self, message):
+        """
+        Processes the list of connected clients received from the server.
+        
+        Updates the client list with the new clients and their public keys.
+        New clients are added to the client list, and missing clients are removed.
+        
+        Args:
+            message: The incoming message containing the list of connected clients.
+        
+        """
+        
+        
         servers = message.get("servers", [])
         new_fingerprints = set()
         
@@ -413,6 +557,17 @@ class Client:
             del self.nicknames[fingerprint]
                 
     async def handle_chat(self, message):
+        """
+        Handle a chat message received from the server
+        
+        This method processes incoming chat messages, decrypts the message content,
+        and prints the message to the console.
+        
+        Args:
+            message: The incoming chat message containing the encrypted chat data.
+            
+        """
+        
         data = message.get("data")
         
 
@@ -471,12 +626,20 @@ class Client:
             
 
     async def send(self, message_json):
+        """
+        Send a message to the server
+        
+        This method sends a message to the server using the WebSocket connection.
+        any exceptions that occur during the send operation.
+        
+        Args:
+            message_json: The message to be sent in JSON format
+        """
         try:
             await self.connection.send(message_json)
         except Exception as e:
             print(f"Error sending message: {e}")
-
-
+            
 client = Client()
 
 if __name__ == "__main__":
