@@ -58,7 +58,12 @@ Once the client has begun running, you will be prompted to enter a message type.
 - `- Charlie`
 - `- John (me)`
 
-4. Exiting the client
+4. Sending file through Public Chat or Private Chat
+   `Enter message type (public, chat, clients, /transfer, files ): /transfer [file to upload] [recipient]`
+
+- `Enter message type (public, chat, clients, /transfer, files ): /transfer file.txt Alice` 
+
+6. Exiting the client
 
 - `Enter message type (public, chat, clients): exit`
 

@@ -10,6 +10,10 @@ This is the client-side implementation of the OLAF Neighbourhood chat protocol. 
 
 - Private chat: Supports sending private messages to one or more recipients
 
+- File transfer: Allows for sending files to the server, with a link generated for download
+
+- File listing: Supports listing all files uploaded to the server
+
 - Clients: Supports listing all connected clients, with randomly generated nicknames for quality of life
 
 ## Install dependencies
@@ -31,6 +35,10 @@ Once the client has begun running, you will be prompted to enter a message type.
 - Chat: Sends a private message to one or more specific clients. You will need to enter the nicknames of the recipients, and then the message text
 
 - Clients: lists all currently connected client, by nickname
+
+- /transfer: Sends a file to the server. You will need to enter the file name and the recipient's nickname (if sending privately)
+
+- Files: Lists all files uploaded to the server
 
 - Exit: Disconnects from the server and exits the program
 
@@ -58,7 +66,21 @@ Once the client has begun running, you will be prompted to enter a message type.
 - `- Charlie`
 - `- John (me)`
 
-4. Exiting the client
+4. Sending file through Public Chat or Private Chat
+
+- File upload through public chat : `Enter message type (public, chat, clients, /transfer, files ): /transfer [file to upload]`
+- `Enter message type (public, chat, clients, /transfer, files ): /transfer file.txt`
+- `Public chat from [your username] : [file] https://localhost:9000/file/file.txt`
+- File upload through private chat : `Enter message type (public, chat, clients, /transfer, files ): /transfer [file to upload] [recipient]`
+- `Enter message type (public, chat, clients, /transfer, files ): /transfer file.txt Alice` 
+- `New chat from [your username] : [file] https://localhost:9000/file/file.txt`
+
+5. View uploaded files
+- `Enter message type (public, chat, clients, /transfer, files ): files`
+- `Uploaded files:`
+- `{"files": ["file.txt"]}`
+
+6. Exiting the client
 
 - `Enter message type (public, chat, clients): exit`
 
@@ -74,5 +96,4 @@ Once the client has begun running, you will be prompted to enter a message type.
 
 ## Future
 
-- File transfer between clients
-- Proper frontend
+- Proper frontend for the client either with a GUI or a web interface
