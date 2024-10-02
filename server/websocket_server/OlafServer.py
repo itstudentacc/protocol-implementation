@@ -8,7 +8,7 @@ import time
 from aiohttp import web
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve, ServerConnection
-# from client.security.security_module import Encryption
+from security_module import Encryption
 
 # Directory to save the uploaded files
 UPLOAD_DIR = 'uploads'
@@ -309,7 +309,6 @@ class WebSocketServer():
         """
         Updates the client list for a particular server
         """
-        print("client_update received")
         updated_client_list = message['clients']
 
         # client udpates should only come from known neighbours
@@ -330,7 +329,6 @@ class WebSocketServer():
         """
         Handles the 'client_update_request' message.
         """
-        print("client_update_request received")
         client_update = {
             "type" : "client_update",
             "clients" : [client.public_key for client in self.clients]
@@ -754,7 +752,6 @@ class WebSocketServer():
         """
         Delivers margarita to a customer
         """
-        print(f"received margarita delivery: {response}")
         for client in self.clients:
             await client.send(response)
         
@@ -814,14 +811,17 @@ class WebSocketServer():
             await asyncio.sleep(0.1)  
 
 if __name__ == "__main__":
+    encryption = Encryption()
     neighbours_1 = {
-        "ws://localhost:8001": "server2_key"
+        "ws://localhost:8001": "server_2_key" 
     }
+    
+    
     ws_server_1 = WebSocketServer('localhost', 9000, 9001, neighbours_1, 'Server_1_public_key')
     
-    
-    neighbours_2 = {} 
+    neighbours_2 = {}
     ws_server_2 = WebSocketServer('localhost', 8001, 8002, neighbours_2, 'Server_2_public_key')
+    
 
     async def start_servers():
         await asyncio.gather(
