@@ -8,7 +8,7 @@ import time
 from aiohttp import web
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve, ServerConnection
-from client.security.security_module import Encryption
+from security_module import Encryption
 
 # Directory to save the uploaded files
 UPLOAD_DIR = 'uploads'
@@ -136,6 +136,7 @@ class WebSocketServer():
             if conn in self.clients:
                 self.clients.remove(conn)
                 await self.send_client_update_to_neighbours()
+                print("Sent client update to neighbours")
             elif conn in self.neighbour_connections:
                 self.neighbour_connections.remove(conn)
                         
