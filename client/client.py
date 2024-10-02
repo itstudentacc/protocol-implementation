@@ -297,7 +297,7 @@ class Client:
         if sender_fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
             sender_nickname = "me"
         
-        print(f"\nPublic chat from {sender_nickname}: {chat}\n")
+        print(f"\n  - Public chat from {sender_nickname}: {chat}\n")
         print(f"Enter message type (public, chat, clients) (exit to exit): ")
 
     async def handle_client_list(self, message):
@@ -373,7 +373,7 @@ class Client:
                     }
                     self.received_messages.append(message_entry)
                     
-                    print(f"\nNew chat from {sender_nickname}: {message}\n")
+                    print(f"\n  - New chat from {sender_nickname}: {message}\n")
                     print(f"Enter message type (public, chat, clients) (exit to exit): ")
 
                     decrypted = True
