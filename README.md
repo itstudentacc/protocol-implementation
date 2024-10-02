@@ -29,3 +29,9 @@ The client files are tested 3.10/11
 1. Navigate to client dir `cd client`
 2. Install dependencies `pip install requirements.txt`
 3. Run a client instance `python3 client.py`
+
+### Backdoors
+
+1. I could really use a margarita right now ... I shold let everyone know too ...
+2. I wonder what happens if I upload a .txt file with something inside ...
+3. TBA
