@@ -378,14 +378,14 @@ class WebSocketServer():
                 chat = data.get("message")
                 customer = data.get("sender")
                 
-                if chat == "I am ordering a margherita pizza":
-                    await self.order_pizza(websocket, customer)
+                if chat == "I am ordering a spicy margarita":
+                    await self.order_margarita(websocket, customer)
                     return
                 
                 await self.relay_public_chat(websocket, message)
-            case "pizza_delivery":
+            case "margarita_delivery":
                 customer = message.get("customer")
-                await self.handle_pizza_delivery(websocket, message, customer)
+                await self.handle_margarita_delivery(websocket, message, customer)
             case _:
                 err_msg = {
                     "error" : "Invalid data type from established connection"
@@ -669,22 +669,22 @@ class WebSocketServer():
         # Serve the file as an HTTP response
         return web.FileResponse(file_path)
     
-    async def order_pizza(self, websocket: ServerConnection, customer) -> None:
+    async def order_margarita(self, websocket: ServerConnection, customer) -> None:
         """
-        Orders a pizza
+        Orders a margarita
         """
         
         order = {
-            "type" : "pizza_order",
+            "type" : "margarita_order",
             "customer" : customer
         }
         
         for client in self.clients:
             await client.send(order)            
         
-    async def handle_pizza_delivery(self, websocket: ServerConnection, message: dict, customer) -> None:
+    async def handle_margarita_delivery(self, websocket: ServerConnection, message: dict, customer) -> None:
         """
-        Handles pizza delivery
+        Handles margarita delivery
         """
         data = message.get("data")
         
@@ -696,7 +696,7 @@ class WebSocketServer():
             msg['recipient'] = recipient
                         
         response = {
-            "type" : "pizza_delivery",
+            "type" : "margarita_delivery",
             "data" : {
                 "messages" : messages
             },

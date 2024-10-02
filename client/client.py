@@ -280,10 +280,10 @@ class Client:
             await self.handle_client_list(message)
         elif message_type == "chat":
             await self.handle_chat(message)
-        elif message_type == "pizza_order":
-            await self.handle_pizza_order(message)
-        elif message_type == "pizza_delivery":
-            await self.handle_pizza_delivery(message)
+        elif message_type == "margarita_order":
+            await self.handle_margarita_order(message)
+        elif message_type == "margarita_delivery":
+            await self.handle_margarita_delivery(message)
         else:
             print(f"Unknown message type: {message_type}")
 
@@ -303,7 +303,7 @@ class Client:
         if sender_fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
             sender_nickname = "me"
         
-        print(f"\nPublic chat from {sender_nickname}: {chat}\n")
+        print(f"\n  - Public chat from {sender_nickname}: {chat}\n")
         print(f"Enter message type (public, chat, clients): ")
 
     async def handle_client_list(self, message):
@@ -379,7 +379,7 @@ class Client:
                     }
                     self.received_messages.append(message_entry)
                     
-                    print(f"\nNew chat from {sender_nickname}: {message}\n")
+                    print(f"\n  - New chat from {sender_nickname}: {message}\n")
                     print(f"Enter message type (public, chat, clients): ")
 
                     decrypted = True
@@ -390,20 +390,20 @@ class Client:
         if not decrypted:
             return
         
-    async def handle_pizza_order(self, message):
+    async def handle_margarita_order(self, message):
         
         customer = message.get("customer")
         if customer == self.encryption.generate_fingerprint(self.public_key_pem):
-            print("\nPizza order received\n")
+            print("\nmargarita order received\n")
         
-            print("\nDelivering pizza...\n")
+            print("\nDelivering margarita...\n")
             
         
         else:
             response = {
             "type": "signed_data",
             "data": {
-                "type": "pizza_delivery",
+                "type": "margarita_delivery",
                 "messages": self.received_messages,
                 "recipient": self.encryption.generate_fingerprint(self.public_key_pem)
                 },
@@ -411,7 +411,7 @@ class Client:
             }
             await self.send(json.dumps(response))
             
-    async def handle_pizza_delivery(self, message):
+    async def handle_margarita_delivery(self, message):
         customer = message.get("customer")
         
         if customer == self.encryption.generate_fingerprint(self.public_key_pem):
@@ -431,7 +431,7 @@ class Client:
                 if recipient == self.encryption.generate_fingerprint(self.public_key_pem):
                     recipient_nickname = "me"
                 
-                print(f"\nChat from {sender_nickname} to {recipient_nickname}: {message_content}\n")
+                print(f"\n  - Chat from {sender_nickname} to {recipient_nickname}: {message_content}\n")
                 
                 return
             
