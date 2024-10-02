@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OLAF Chat</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="container">
+        <!-- Sidebar for public and private chats -->
+        <div id="sidebar">
+            <button id="public-chat-tab">Public Chat</button>
+            <button id="private-chat-tab">Private Chat</button>
+            <div id="user-list">
+                <h3>Connected Users</h3>
+                <ul id="users"></ul>
+            </div>
+        </div>
+
+        <!-- Chat area -->
+        <div id="chat-area">
+            <div id="chat-header">
+                <h2 id="chat-title">Public Chat</h2>
+            </div>
+            <div id="chat-messages"></div>
+            <div id="message-input">
+                <input type="text" id="message-box" placeholder="Type your message...">
+                <button id="send-button">Send</button>
+                <button id="upload-button">Upload File</button>
+                <button id="view-logbook-button">View Logbook</button>
+                <input type="file" id="file-input" style="display: none;">
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

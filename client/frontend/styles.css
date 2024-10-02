@@ -1,0 +1,45 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #36393f;
+    color: white;
+}
+
+#container {
+    display: flex;
+    height: 90vh;
+}
+
+#sidebar {
+    width: 20%;
+    background-color: #202225;
+    padding: 10px;
+}
+
+#chat-area {
+    width: 80%;
+    display: flex;
+    flex-direction: column;
+}
+
+#chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 10px;
+    background-color: #2f3136;
+}
+
+#message-input {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+}
+
+#message-box {
+    flex-grow: 1;
+    padding: 10px;
+}
+
+button {
+    margin: 5px;
+    padding: 10px;
+}

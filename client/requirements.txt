@@ -1,4 +1,5 @@
 aioconsole==0.8.0
+aiohttp==3.8.1
 cffi==1.17.1
 cryptography==43.0.1
 pycparser==2.22
