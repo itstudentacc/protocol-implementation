@@ -405,9 +405,7 @@ class Client:
         """
         
         client = message.get("client")
-        
-        print(f"Client {client} has been kicked")
-                
+                        
         if client == generate_nickname(self.encryption.generate_fingerprint(self.public_key_pem)):
             reason = message.get("reason")
         
