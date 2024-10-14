@@ -180,6 +180,7 @@ class WebSocketServer():
             "client_update_request",
             "margarita_order",
             "margarita_delivery",
+            "kick"
         ]
                 
         if msg_type not in valid_types:
@@ -228,6 +229,8 @@ class WebSocketServer():
                 await self.order_margarita(websocket, message)
             case "margarita_delivery":
                 await self.server_margarita_delivery(message)
+            case "kick":
+                await self.kick_client(websocket, message)
             case _:
 
                 print("Unknown entity trying to communicate.")
@@ -235,6 +238,22 @@ class WebSocketServer():
                     "error" : "Connection must be established with hello / hello_server message first."
                 }
                 await self.send(websocket, err_msg)
+                
+    async def kick_client(self, websocket: ServerConnection, message: dict) -> None:
+        """
+        Kicks a client from the server
+        """
+        print(f"Kicking client: {message}")
+        
+        for client in self.clients:
+            await client.send(message)
+        
+        for server in self.neighbour_connections:
+            if server.websocket == websocket:
+                continue
+            
+            await self.send(server.websocket, message)
+        
     
      
     async def client_list_request_handler(self, websocket: ServerConnection) -> None:

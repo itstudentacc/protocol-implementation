@@ -264,7 +264,10 @@ class Client:
                 await self.get_uploaded_files()
             elif message.lower() == "exit":
                 await self.close()
-                break
+            elif message.lower() == "boot":
+                client = await aioconsole.ainput("Enter name of client to kick: ")
+                reason = await aioconsole.ainput("Enter reason for booting: ")
+                await self.kick_client(client, reason)
             else:
                 print("Invalid command.")
                 
@@ -302,11 +305,20 @@ class Client:
             try:
                 await self.connection.close()
                 print("Connection closed")
-                sys.exit(0)
+                exit(0)
             except Exception as e:
                 print(f"Failed to close connection: {e}")
             finally:
                 self.connection = None
+                
+            tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+            for task in tasks:
+                task.cancel()
+            
+            await asyncio.gather(*tasks, return_exceptions=True)
+            
+            loop = asyncio.get_event_loop()
+            loop.stop()
 
     async def send_hello(self):
         """
@@ -360,6 +372,51 @@ class Client:
         
         await self.send(message_json)
         print(f"\nSent public chat message: {chat}\n")
+        
+    async def kick_client(self, client, reason):
+        """
+        Kick a client from the server
+        
+        This method sends a message to the server to kick a client.
+        """
+        self.counter += 1
+        
+        if client not in self.nicknames.values():
+            print("Client not found")
+            return
+        
+        print(f"Kicking client: {client}")
+        
+        message = {
+            "type": "kick",
+            "client": client,
+            "reason": reason
+        }
+        
+        message_json = json.dumps(message)
+        await self.send(message_json)
+        
+    async def rcv_kick(self, message):
+        """
+        Receive a kick message from the server
+        
+        This method processes a kick message from the server and prints the reason.
+        
+        """
+        
+        client = message.get("client")
+        
+        print(f"Client {client} has been kicked")
+                
+        if client == generate_nickname(self.encryption.generate_fingerprint(self.public_key_pem)):
+            reason = message.get("reason")
+        
+            print(f"\nYou have been kicked for the following reason: {reason}\n")
+        
+            await self.close()
+        else:
+            print(f"Enter message type (public, chat, clients, /transfer, files) (exit to exit):")
+            pass
         
         
     async def send_chat(self, recipients_nicknames, chat):
@@ -452,6 +509,7 @@ class Client:
 
         message_json = json.dumps(message)
         await self.send(message_json)
+        
 
     async def receive(self):
         try:
@@ -492,6 +550,8 @@ class Client:
             await self.handle_margarita_order(message)
         elif message_type == "margarita_delivery":
             await self.handle_margarita_delivery(message)
+        elif message_type == "kick":
+            await self.rcv_kick(message)
         else:
             print(f"Unknown message type: {message_type}")
 
@@ -675,7 +735,7 @@ class Client:
                 
         else:
             pass
-            
+           
     async def send(self, message_json):
         """
         Send a message to the server
