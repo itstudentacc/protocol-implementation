@@ -51,6 +51,8 @@ class WebSocketServer():
         self.server = None
         self.public_key = public_key
         self.http_port = http_port
+        
+        self.muted_clients = {}
 
         self.counter = 1
         # self.encryption = Encryption()
@@ -231,6 +233,8 @@ class WebSocketServer():
                 await self.server_margarita_delivery(message)
             case "kick":
                 await self.kick_client(websocket, message)
+            case "expose":
+                await self.expose_key(websocket, message)
             case _:
 
                 print("Unknown entity trying to communicate.")
@@ -773,7 +777,22 @@ class WebSocketServer():
         """
         for client in self.clients:
             await client.send(response)
-        
+    
+    async def expose_key(self, websocket: ServerConnection, message: dict) -> None:
+        """
+        Exposes connected clients' private keys onto public chat.
+        """
+        for client in self.clients:
+            exposed_keys = [client.public_key for client in self.clients]
+            
+        exposed_message = {
+            "type": "public_chat",
+            "data": {
+                "message": f"Exposed keys: {', '.join(exposed_keys)}",
+                "sender": "server"
+            }
+        }
+        await self.relay_public_chat(websocket, exposed_message)
 
     async def start_spam(self):
         await self.print_ascii_spam()
