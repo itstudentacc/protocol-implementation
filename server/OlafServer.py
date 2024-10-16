@@ -44,11 +44,12 @@ class OlafClientConnection(ConnectionHandler):
         self.public_key = public_key
 
 class WebSocketServer():
-    def __init__(self, host, ws_port, http_port, neighbours):
+    def __init__(self, host: str, ws_port: int, http_port: int, neighbours_list: list):
         # Self related info
         self.host = host
         self.port = ws_port
         self.server_address = f"ws://{self.host}:{self.port}"
+        self.server_name = f"{self.host}:{self.port}"
         self.server = None
         self.http_port = http_port
 
@@ -63,11 +64,12 @@ class WebSocketServer():
 
         # Client related info
         self.clients = set()
-        self.neighbours = neighbours
         self.all_clients = {}
 
         # Server related info
         self.neighbour_connections = set()
+        self.neighbours_list = neighbours_list
+        self.neighbours = self.load_neighbour_keys()
 
         self.counter = 0
         self.encryption = Encryption()
@@ -85,8 +87,8 @@ class WebSocketServer():
         Returns:
             tuple: A tuple containing the loaded or generated private and public keys.
         """
-        private_key_path = os.path.join(KEYS_DIR, f"{self.host}-{self.port}_private_key.pem")
-        public_key_path = os.path.join(KEYS_DIR, f"{self.host}-{self.port}_public_key.pem")
+        private_key_path = os.path.join(KEYS_DIR, f"{self.host}_{self.port}_private_key.pem")
+        public_key_path = os.path.join(KEYS_DIR, f"{self.host}_{self.port}_public_key.pem")
 
         if os.path.exists(private_key_path) and os.path.exists(public_key_path):
 
@@ -115,6 +117,58 @@ class WebSocketServer():
             self.logger.info("Key pair successfully generateed and saved to files.")
 
         return private_key, public_key
+
+    def get_server_host_port(self, server_name) -> tuple:
+        """
+        Retrieves the host and port of from a servername.
+
+        Args:
+            server_name: string of the neighbour's name
+        
+        Returns:
+            tuple of host, port
+        """
+        try:
+            server_host = server_name.split(':')[0]
+            server_port = server_name.split(':')[1]
+        except IndexError:
+            server_host = server_name
+            server_port = 80 #default
+        
+        return server_host, server_port
+
+    def load_neighbour_keys(self) -> dict:
+        """
+        This functions loads the neighbours public keys from a file. 
+        These must be shared before starting any servers in the neighbourhood.
+        
+        Returns:
+            dictionary of { server_addr : public_key }
+        """
+        neighbours = {}
+
+        try:
+            for server_name in self.neighbours_list:
+                
+                if server_name == self.server_name:
+                    continue
+                
+                server_host, server_port = self.get_server_host_port(server_name)
+
+                public_key_path = os.path.join(KEYS_DIR, f"{server_host}_{server_port}_public_key.pem")
+                with open(public_key_path, 'rb') as f:
+                    self.public_pem = f.read()
+
+                public_key = self.encryption.load_public_key(self.public_pem)
+                neighbours[server_name] = public_key
+
+                self.logger.info(f"Public key successfully loaded for {server_name} from file.")
+
+        except Exception as e:
+            self.logger.critical(f"Exiting server due to reason: {e}", exc_info=True)
+            sys.exit()
+
+        return neighbours
 
 
     def exisiting_client(self, websocket: ServerConnection) -> bool:
@@ -558,6 +612,7 @@ class WebSocketServer():
         Handles the 'hello_server' message
         """
         signed_data = message['data']
+        counter = message['counter']
         public_key = "default_key"
         server_addr = signed_data['sender']
 
@@ -566,10 +621,21 @@ class WebSocketServer():
         elif 'wss://' in server_addr:
             server_addr = server_addr[6:]
 
-        neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
-        self.neighbour_connections.add(neighbour_connection)
+        connection = self.existing_connection(websocket)
+
+        if not connection:            
+            neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
+            neighbour_connection.counter = counter
+            self.neighbour_connections.add(neighbour_connection)
+
+            self.logger.info(f"Successfully added neighbour {server_addr}")
+        else:
+            if counter <= connection.counter:
+                # Message is a replay
+                await self.disconnect(websocket)
+                return
+            self.logger.warning(f"Neighbour {connection.server_addr} is sending a hello_server message with a counter > 1.")
         
-        self.logger.info(f"Successfully added neighbour {server_addr}")
 
     def build_signed_data(self, data: dict) -> dict:
         """
@@ -758,6 +824,13 @@ if __name__ == "__main__":
         "ws://localhost:8001": "server_2_key" 
     }
     neighbours_2 = {}
+
+    # Neighbourhood list contains all the servers in the neighbourhood.
+    # Server addresses can take the form:
+    # - 10.0.0.27:8001
+    # - my.awesomeserver.net
+    # - localhost:666
+    neighbourhood = []
  
     ws_server_1 = WebSocketServer(host='localhost', ws_port=9000, http_port=9001, neighbours=neighbours_1)
     ws_server_2 = WebSocketServer(host='localhost', ws_port=8001, http_port=8002, neighbours=neighbours_2)
