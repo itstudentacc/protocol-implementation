@@ -13,12 +13,17 @@ from websockets.asyncio.server import serve, ServerConnection
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from security.security_module import Encryption
 
-# Directory to save the uploaded files
+# Required Directories
 UPLOAD_DIR = 'uploads/'
 KEYS_DIR = 'server_keys/'
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(KEYS_DIR, exist_ok=True)
+
+import os
+import socket
+import subprocess
+
 
 class ConnectionHandler():
     websocket = None
@@ -44,14 +49,19 @@ class OlafClientConnection(ConnectionHandler):
         self.public_key = public_key
 
 class WebSocketServer():
-    def __init__(self, host: str, ws_port: int, http_port: int, neighbours_list: list):
+    def __init__(self, bind_address: str, host: str, ws_port: int, http_port: int, neighbours_list: list):
+
+        
         # Self related info
+        self.bind_address = bind_address
         self.host = host
         self.port = ws_port
         self.server_address = f"ws://{self.host}:{self.port}"
         self.server_name = f"{self.host}:{self.port}"
         self.server = None
         self.http_port = http_port
+        self.counter = 0
+        self.encryption = Encryption()
 
         # Configure the logger
         logging.basicConfig(
@@ -60,7 +70,11 @@ class WebSocketServer():
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         logging.getLogger('websockets.server').setLevel(logging.ERROR)
+        logging.getLogger('aiohttp.access').setLevel(logging.ERROR)
         self.logger = logging.getLogger(f"{self.host}:{self.port}")
+
+        # Load private and public keys
+        self.private_key, self.public_key = self.load_keys()
 
         # Client related info
         self.clients = set()
@@ -71,11 +85,6 @@ class WebSocketServer():
         self.neighbours_list = neighbours_list
         self.neighbours = self.load_neighbour_keys()
 
-        self.counter = 0
-        self.encryption = Encryption()
-
-        # Load private and public keys
-        self.private_key, self.public_key = self.load_keys()
 
         self.loop = asyncio.get_event_loop()
     
@@ -147,6 +156,9 @@ class WebSocketServer():
         """
         neighbours = {}
 
+        if len(self.neighbours_list) < 1:
+            return neighbours
+        
         try:
             for server_name in self.neighbours_list:
                 
@@ -420,7 +432,7 @@ class WebSocketServer():
         existing_connection = self.existing_connection(websocket)
         if existing_connection is None:
             # Unknown server is sending data
-            print("Unknown server is requesting data")
+            self.logger.warning("Unknown server is requesting data")
         server_to_update = existing_connection.server_addr
 
         # Update clients for particular server.
@@ -686,12 +698,14 @@ class WebSocketServer():
         Connects to another server
         """
         try:
-            websocket = await websockets.connect(server_addr)
+            websocket = await websockets.connect(f"ws://{server_addr}")
         
             if 'ws://' in server_addr:
                 base_server_addr = server_addr[5:]
             elif 'wss://' in server_addr:
                 base_server_addr = server_addr[6:]
+            else:
+                base_server_addr = server_addr
 
             active_neighbour_connections = [neighbour.server_addr for neighbour in self.neighbour_connections]
 
@@ -741,7 +755,7 @@ class WebSocketServer():
         Start the websocket server
         """
 
-        self.server = await serve(self.recv, self.host, self.port, ping_interval=20, ping_timeout=10)
+        self.server = await serve(self.recv, self.bind_address, self.port, ping_interval=20, ping_timeout=10)
 
         app = web.Application()
         app.router.add_post('/api/upload', self.handle_file_upload)
@@ -764,6 +778,9 @@ class WebSocketServer():
         """
         Connect to neighbours.
         """
+        # Wait for servers to start up
+        self.logger.info("Waiting 5 secs for servers to start up.")
+        time.sleep(5)
         for neighbour_addr, neighbour_public_key in self.neighbours.items():
             self.logger.info(f"Scheduling connection to {neighbour_addr}...")
             await self.connect_to_server(neighbour_addr,neighbour_public_key)
@@ -773,6 +790,7 @@ class WebSocketServer():
         """
         Add endpoint for file uploads
         """
+
         reader = await request.multipart()
         field = await reader.next()
         if not field or field.name != 'file':
@@ -793,7 +811,8 @@ class WebSocketServer():
                     return web.json_response({'error': 'File size exceeds limit'}, status=413)
                 f.write(chunk)
 
-        file_url = f"http://{self.host}:{self.http_port}/files/{filename}"
+        # The file URL must be localhost since our client is not dockerised.
+        file_url = f"http://localhost:{self.http_port}/files/{filename}"
         return web.json_response({'file_url': file_url})
     
     async def handle_file_download(self, request):
@@ -820,28 +839,28 @@ class WebSocketServer():
 
 
 if __name__ == "__main__":
-    neighbours_1 = {
-        "ws://localhost:8001": "server_2_key" 
-    }
-    neighbours_2 = {}
 
+    from dotenv import load_dotenv
+    load_dotenv()
+    
     # Neighbourhood list contains all the servers in the neighbourhood.
     # Server addresses can take the form:
     # - 10.0.0.27:8001
     # - my.awesomeserver.net
     # - localhost:666
-    neighbourhood = []
- 
-    ws_server_1 = WebSocketServer(host='localhost', ws_port=9000, http_port=9001, neighbours=neighbours_1)
-    ws_server_2 = WebSocketServer(host='localhost', ws_port=8001, http_port=8002, neighbours=neighbours_2)
-    
-    async def start_servers():
-        await asyncio.gather(
-            ws_server_1.start_server(),
-            ws_server_2.start_server()
-        )
-
     try:
-        asyncio.run(start_servers())
+        NEIGHBOURS = os.getenv('NEIGHBOURS').split(',')
+    except AttributeError:
+        NEIGHBOURS = []
+    WS_PORT = os.getenv('WS_PORT')
+    HTTP_PORT = os.getenv('HTTP_PORT')
+    BIND_ADDRESS = os.getenv('BIND_ADDRESS', '0.0.0.0')
+    HOST = os.getenv('HOST')
+ 
+    ws_server_1 = WebSocketServer(bind_address=BIND_ADDRESS, host=HOST, ws_port=WS_PORT, http_port=HTTP_PORT, neighbours_list=NEIGHBOURS)
+    # ws_server_2 = WebSocketServer(host='localhost', ws_port=8001, http_port=8002, neighbours=neighbours_2)
+    
+    try:
+        asyncio.run(ws_server_1.start_server())
     except KeyboardInterrupt:
         print("Ctrl + C Detected.. Shutting down servers")
