@@ -85,8 +85,8 @@ class WebSocketServer():
         Returns:
             tuple: A tuple containing the loaded or generated private and public keys.
         """
-        private_key_path = os.path.join(KEYS_DIR, 'private_key.pem')
-        public_key_path = os.path.join(KEYS_DIR, 'public_key.pem')
+        private_key_path = os.path.join(KEYS_DIR, f"{self.host}-{self.port}_private_key.pem")
+        public_key_path = os.path.join(KEYS_DIR, f"{self.host}-{self.port}_public_key.pem")
 
         if os.path.exists(private_key_path) and os.path.exists(public_key_path):
 
