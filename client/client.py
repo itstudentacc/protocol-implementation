@@ -7,9 +7,13 @@ import logging
 import aiohttp
 import sys
 import os
-from security.security_module import Encryption
 from urllib.parse import urlparse
 from nickname_generator import generate_nickname
+
+# Modify sys.path in the script to recognise packages in root dir.
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from security.security_module import Encryption
+
 
 # Configure the logger
 logging.basicConfig(level=logging.INFO)
