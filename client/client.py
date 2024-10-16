@@ -24,6 +24,8 @@ class Client:
         self.counter = 0
         self.public_key = None
         self.private_key = None
+        self.private_key_pem = None
+        self.public_key_pem = None
         self.received_messages = []
         self.clients = {} # {fingerprint: public_key}
         self.server_fingerprints = {} # {fingerprint: server_address}
@@ -515,7 +517,7 @@ class Client:
             sender_nickname = "me"
         
         print(f"\n  - Public chat from {sender_nickname}: {chat}\n")
-        print(f"Enter message type (public, chat, clients, /transfer, files): ")
+        print(f"Enter message type (public, chat, clients, /transfer, files) (exit to exit): ")
 
 
     async def handle_client_list(self, message):
@@ -616,7 +618,7 @@ class Client:
                     
 
                     print(f"\n  - New chat from {sender_nickname}: {message}\n")
-                    print(f"Enter message type (public, chat, clients, /transfer, files): ")
+                    print(f"Enter message type (public, chat, clients, /transfer, files) (exit to exit): ")
 
 
                     decrypted = True
