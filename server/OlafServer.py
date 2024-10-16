@@ -1,14 +1,15 @@
 import asyncio
 import websockets
 import json
-import hashlib
 import os
-import traceback
+import sys
 import time
 from aiohttp import web
-from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve, ServerConnection
-from security_module import Encryption
+
+# Modify sys.path in the script to recognise packages in root dir.
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from security.security_module import Encryption
 
 # Directory to save the uploaded files
 UPLOAD_DIR = 'uploads'
