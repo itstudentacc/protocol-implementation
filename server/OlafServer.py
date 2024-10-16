@@ -20,11 +20,6 @@ KEYS_DIR = 'server_keys/'
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(KEYS_DIR, exist_ok=True)
 
-import os
-import socket
-import subprocess
-
-
 class ConnectionHandler():
     websocket = None
     public_key = ""
@@ -858,7 +853,6 @@ if __name__ == "__main__":
     HOST = os.getenv('HOST')
  
     ws_server_1 = WebSocketServer(bind_address=BIND_ADDRESS, host=HOST, ws_port=WS_PORT, http_port=HTTP_PORT, neighbours_list=NEIGHBOURS)
-    # ws_server_2 = WebSocketServer(host='localhost', ws_port=8001, http_port=8002, neighbours=neighbours_2)
     
     try:
         asyncio.run(ws_server_1.start_server())
