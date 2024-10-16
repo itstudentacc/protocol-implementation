@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import time
+import logging
 from aiohttp import web
 from websockets.asyncio.server import serve, ServerConnection
 
@@ -11,9 +12,16 @@ from websockets.asyncio.server import serve, ServerConnection
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from security.security_module import Encryption
 
+# Configure the logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Directory to save the uploaded files
 UPLOAD_DIR = 'uploads'
+KEYS_DIR = 'server_keys/'
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(KEYS_DIR, exist_ok=True)
 
 class ConnectionHandler():
     websocket = None
@@ -54,11 +62,51 @@ class WebSocketServer():
         self.http_port = http_port
 
         self.counter = 1
-        # self.encryption = Encryption()
+        self.encryption = Encryption()
 
+        # Load private and public keys
+        self.private_key, self.public_key = self.load_keys()
+        print(self.public_key)
 
         self.loop = asyncio.get_event_loop()
     
+    def load_keys(self) -> tuple:
+        """
+        This function loads the private and public keys from a file onto the server.
+        If no keys are found, it generates a pair and saves them to files for future use.
+
+        Returns:
+            tuple: A tuple containing the loaded or generated private and public keys.
+        """
+        private_key_path = os.path.join(KEYS_DIR, 'private_key.pem')
+        public_key_path = os.path.join(KEYS_DIR, 'public_key.pem')
+
+        if os.path.exists(private_key_path) and os.path.exists(public_key_path):
+
+            with open(private_key_path, 'rb') as f:
+                private_pem = f.read()
+            with open(public_key_path, 'rb') as f:
+                public_pem = f.read()
+
+            private_key = self.encryption.load_private_key(private_pem)
+            public_key = self.encryption.load_public_key(public_pem)
+
+        else:
+            public_pem, private_pem = self.encryption.generate_rsa_key_pair()
+            print(public_pem)
+
+            with open(private_key_path, 'wb') as f:
+                f.write(private_pem)
+
+            with open(public_key_path, 'wb') as f:
+                f.write(public_pem)
+
+            private_key = self.encryption.load_private_key(private_pem)
+            public_key = self.encryption.load_public_key(public_pem)
+
+        return private_key, public_key
+
+
     def exisiting_client(self, websocket: ServerConnection) -> bool:
         """
         Returns true if websocket is part of existing client list
