@@ -1,18 +1,24 @@
 import asyncio
 import websockets
 import json
-import hashlib
 import os
-import traceback
+import sys
 import time
+import logging
+import base64
 from aiohttp import web
-from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve, ServerConnection
-from security_module import Encryption
+
+# Modify sys.path in the script to recognise packages in root dir.
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from security.security_module import Encryption
 
 # Directory to save the uploaded files
 UPLOAD_DIR = 'uploads'
+KEYS_DIR = 'server_keys/'
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(KEYS_DIR, exist_ok=True)
 
 class ConnectionHandler():
     websocket = None
@@ -42,28 +48,81 @@ class OlafClientConnection(ConnectionHandler):
         self.username = username
 
 class WebSocketServer():
-    def __init__(self, host, ws_port, http_port, neighbours, public_key):
+    def __init__(self, host, ws_port, http_port, neighbours):
+        # Self related info
         self.host = host
         self.port = ws_port
         self.server_address = f"ws://{self.host}:{self.port}"
+        self.server = None
+        self.http_port = http_port
 
+        # Configure the logger
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        logging.getLogger('websockets.server').setLevel(logging.ERROR)
+        self.logger = logging.getLogger(f"{self.host}:{self.port}")
+
+        # Client related info
         self.clients = set()
         self.neighbours = neighbours
         self.all_clients = {}
 
+        # Server related info
         self.neighbour_connections = set()
-        self.server = None
-        self.public_key = public_key
-        self.http_port = http_port
         
         self.muted_clients = {}
 
-        self.counter = 1
-        # self.encryption = Encryption()
+        self.counter = 0
+        self.encryption = Encryption()
 
+        # Load private and public keys
+        self.private_key, self.public_key = self.load_keys()
 
         self.loop = asyncio.get_event_loop()
     
+    def load_keys(self) -> tuple:
+        """
+        This function loads the private and public keys from a file onto the server.
+        If no keys are found, it generates a pair and saves them to files for future use.
+
+        Returns:
+            tuple: A tuple containing the loaded or generated private and public keys.
+        """
+        private_key_path = os.path.join(KEYS_DIR, f"{self.host}-{self.port}_private_key.pem")
+        public_key_path = os.path.join(KEYS_DIR, f"{self.host}-{self.port}_public_key.pem")
+
+        if os.path.exists(private_key_path) and os.path.exists(public_key_path):
+
+            with open(private_key_path, 'rb') as f:
+                self.private_pem = f.read()
+            with open(public_key_path, 'rb') as f:
+                self.public_pem = f.read()
+
+            private_key = self.encryption.load_private_key(self.private_pem)
+            public_key = self.encryption.load_public_key(self.public_pem)
+
+            self.logger.info("Key pair successfully loaded from files.")
+
+        else:
+            self.public_pem, self.private_pem = self.encryption.generate_rsa_key_pair()
+
+            with open(private_key_path, 'wb') as f:
+                f.write(self.private_pem)
+
+            with open(public_key_path, 'wb') as f:
+                f.write(self.public_pem)
+
+            private_key = self.encryption.load_private_key(self.private_pem)
+            public_key = self.encryption.load_public_key(self.public_pem)
+
+            self.logger.info("Key pair successfully generateed and saved to files.")
+
+        return private_key, public_key
+
+
     def exisiting_client(self, websocket: ServerConnection) -> bool:
         """
         Returns true if websocket is part of existing client list
@@ -109,7 +168,7 @@ class WebSocketServer():
                     await self.handler(websocket, data)
 
                 except json.decoder.JSONDecodeError:
-                    print("Invalid Format")
+                    self.logger.info(f"Failed to JSON decode message: {message}")
                     err = {
                         "error" : "Message received not in JSON string."
                     }
@@ -118,8 +177,6 @@ class WebSocketServer():
                 await self.disconnect(websocket)
                 break
             except websockets.exceptions.ConnectionClosed as conn_closed:
-                print(str(conn_closed))
-                print('line 91')
                 # Remove from clients / neighbours list
                 await self.disconnect(websocket)
                 break
@@ -160,40 +217,67 @@ class WebSocketServer():
     
     def message_fits_standard(self, message: dict) -> bool:
         """
-        Returns True if message fits an OLAF Protocol message.
-        Extent of checking is if whether the message has the correct keys.
-        No checks performed on the values - which leaves a backdoor open.
+        Validates that the message has the required fields according to its type.
+        Returns True if valid, False otherwise.
         """
 
-        valid_keys = [
-            "type",
-            "data",
-            "counter",
-            "signature"
-        ]
+        def has_required_fields(msg, required_fields):
+            """
+            Helper function to check if required fields are present.
+            """
+            for field in required_fields:
+                if field not in msg:
+                    self.logger.error(f"Validation Error: Message missing required field '{field}'.")
+                    return False
+            return True
 
-        # for key in message.keys():
-        #     if key not in valid_keys:
-        #         return False
+        try:
+            # Determine message type
+            message_type = message.get("type") or message.get("data", {}).get("type")
+            if not message_type:
+                self.logger.error("Validation Error: Message missing 'type' field.")
+                return False
 
-        msg_type = message["type"]
+            # Define required fields based on message_type
+            message_type_to_fields = {
+                "signed_data": ["data", "counter", "signature"],
+                "client_list_request": ["type"],
+                "client_update": ["type", "clients"],
+                "client_list": ["type", "servers"],
+                "client_update_request": ["type"]
+            }
 
-        valid_types = [
-            "signed_data",
-            "client_list_request",
-            "client_list",
-            "client_update",
-            "client_update_request",
-            "margarita_order",
-            "margarita_delivery",
-            "kick"
-        ]
-                
-        if msg_type not in valid_types:
+            data_type_to_fields = {
+                "hello": ["type", "public_key"],
+                "chat": ["type", "destination_servers", "iv", "symm_keys", "chat"],
+                "public_chat": ["type", "sender", "message"],
+                "server_hello": ["type", "sender"]
+            }
+
+            # Validate required fields for top-level message
+            if message_type in message_type_to_fields:
+                if not has_required_fields(message, message_type_to_fields[message_type]):
+                    return False
+
+                # Check nested data if message_type is "signed_data"
+                if message_type == "signed_data":
+                    data = message.get("data", {})
+                    data_type = data.get("type")
+                    if data_type in data_type_to_fields:
+                        return has_required_fields(data, data_type_to_fields[data_type])
+                    else:
+                        self.logger.error(f"Validation Error: Unknown signed data type '{data_type}'.")
+                        return False
+
+            else:
+                self.logger.error(f"Validation Error: Unknown message type '{message_type}'.")
+                return False
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Validation Error: Exception occurred - {e}")
             return False
-        
-        return True
-
 
     async def echo(self, websocket: ServerConnection) -> None:
         """
@@ -210,8 +294,7 @@ class WebSocketServer():
         # Check whether message meets standardised format
         if not self.message_fits_standard(message):
             # Return invalid message error.
-            print(f"Unkown message type received")
-            print(message)
+            self.logger.info(f"Unknown message type received: {message}")
             err_msg = {
                 "error" : "Message does not fit OLAF Protocol standard."
             }
@@ -241,7 +324,7 @@ class WebSocketServer():
                 await self.expose_key(websocket, message)
             case _:
 
-                print("Unknown entity trying to communicate.")
+                self.logger.info("Unknown party attempt to communicate")
                 err_msg = {
                     "error" : "Connection must be established with hello / hello_server message first."
                 }
@@ -251,8 +334,7 @@ class WebSocketServer():
         """
         Kicks a client from the server
         """
-        print(f"Kicking client: {message}")
-        
+        self.logger.info(f"Kicking client: {message}")
         for client in self.clients:
             await client.send(message)
         
@@ -302,36 +384,7 @@ class WebSocketServer():
 
         await self.send(websocket, client_list)
 
-    def print_all_clients(self) -> None:
-        """
-        FOR DEBUGGING - print all clients
-        """
-        # other_servers_clients = [
-        #     {
-        #         "address" : address,
-        #         "clients" :  client_list
-        #     } for address, client_list in self.all_clients.items()
-        # ]
-
-        all_clients = []
-
-        for address, clients in self.all_clients.items():
-            tmp = {
-                "address" : address,
-                "clients" : clients
-            }
-            all_clients.append(tmp)
-
-        own_clients = {
-            "address" : f"{self.host}:{self.port}",
-            "clients" : [client.public_key for client in self.clients]
-        }
-        
-        servers = all_clients.append(own_clients)
-
-        print(f"All Clients: {servers}")
-
-
+    
     async def client_update_handler(self, websocket: ServerConnection, message: dict) -> None:
         """
         Updates the client list for a particular server
@@ -347,7 +400,6 @@ class WebSocketServer():
 
         # Update clients for particular server.
         self.all_clients[server_to_update] = updated_client_list
-        print(self.all_clients)
 
         await self.broadcast_client_list()
         
@@ -451,7 +503,7 @@ class WebSocketServer():
             if destination_server in neighbour_addresses.keys():
                 await neighbour_addresses[destination_server].send(message)
             else:
-                print("Unknown Destination server.")
+                self.logger.warning(f"Unknown destination server {destination_server} listed in chat message. Check if neighbourhood is complete.")
 
 
     async def relay_public_chat(self, websocket: ServerConnection, message: dict) -> None:
@@ -463,11 +515,8 @@ class WebSocketServer():
         for client in self.clients:
             await client.send(message)
         
-        print([neighbour.websocket for neighbour in self.neighbour_connections])
         # Send public Chat Message to all servers.
         for server in self.neighbour_connections:
-            # print(server.websocket != websocket)
-            print(server.server_addr)
             if server.websocket == websocket:
                 # Do not send back to the server which you received the public chat from
                 continue
@@ -564,8 +613,51 @@ class WebSocketServer():
         neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
         self.neighbour_connections.add(neighbour_connection)
         
-        print(f"New neighbour added: {server_addr}")
+        self.logger.info(f"Successfully added neighbour {server_addr}")
 
+    def build_signed_data(self, data: dict) -> dict:
+        """
+        Build a signed message with the given data
+        """
+        message = {
+            "data": data,
+            "counter": self.counter
+        }
+
+        message_str = json.dumps(message, separators=(',', ':'), sort_keys=True)
+        message_bytes = message_str.encode('utf-8')
+
+        # Sign the message
+        signature = self.encryption.sign_message(message_bytes, self.private_pem)
+        signature_base64 = base64.b64encode(signature).decode('utf-8')
+
+        # Prepare the signed message
+        signed_data = {
+            "type": "signed_data",
+            "data": data,
+            "counter": self.counter,
+            "signature": signature_base64
+        }
+
+        return signed_data
+    
+    def build_server_hello(self):
+        """
+        Send a hello message to the server.
+        
+        Increments message counter and sends public key as part of the hello message.
+        """
+        
+        self.counter += 1
+        
+        message_data = {
+            "type": "server_hello",
+            "sender": f"{self.host}:{self.port}"  
+        }
+
+        server_hello = self.build_signed_data(message_data)
+
+        return server_hello
 
     async def connect_to_server(self, server_addr: str, public_key: str) -> None:
         """
@@ -575,46 +667,35 @@ class WebSocketServer():
             websocket = await websockets.connect(server_addr)
         
             if 'ws://' in server_addr:
-                server_addr = server_addr[5:]
+                base_server_addr = server_addr[5:]
             elif 'wss://' in server_addr:
-                server_addr = server_addr[6:]
+                base_server_addr = server_addr[6:]
 
             active_neighbour_connections = [neighbour.server_addr for neighbour in self.neighbour_connections]
-            if server_addr in active_neighbour_connections:
-                print(f"{server_addr} already a part of the neighbourhood. ")
+
+            if base_server_addr in active_neighbour_connections:
+                self.logger.info(f"{server_addr} already a part of the neighbourhood. ")
                 return
-            neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
+            
+            neighbour_connection = OlafServerConnection(websocket, base_server_addr, public_key)
             self.neighbour_connections.add(neighbour_connection)
-            print(f"New neighbour added: {neighbour_connection.server_addr}")
             
             # Send server_hello upon established connection
-            signed_data = {
-                "type" : "signed_data",
-                "data" : None
-            }
-            server_hello = {
-                "type" : "server_hello",
-                "sender" : f"{self.host}:{self.port}"
-            }
-            signed_data["data"] = server_hello
-            self.counter += 1
-            signed_data["counter"] = self.counter
-
-
-            await neighbour_connection.send(signed_data)
-
+            server_hello = self.build_server_hello()
             client_update_request = {
                 "type" : "client_update_request"
             }
 
+            await neighbour_connection.send(server_hello)
             await neighbour_connection.send(client_update_request)
 
+            self.logger.info(f"New neighbour added: {neighbour_connection.server_addr}")
             asyncio.ensure_future(self.recv_from_server(websocket))
 
         except Exception as e:
-            print(f"Failed to connect to {server_addr}: {e}")
-            # Wait 10 secs before trying again.
-            time.sleep(10)
+            self.logger.error(f"Failed to connect to {server_addr}: {e}", exc_info=True)
+            # Wait 5 secs before trying again.
+            time.sleep(5)
             await self.connect_to_server(server_addr, public_key)
 
     async def recv_from_server(self, websocket: ServerConnection) -> None:
@@ -627,9 +708,9 @@ class WebSocketServer():
                     data = json.loads(message)
                     await self.handler(websocket, data)
                 except json.JSONDecodeError:
-                    print(f"Unkown Message Format: { message }")
+                    self.logger.error(f"Unkown Message Format: { message }. Unable to handle message")
         except Exception as e:
-            print(f"EXCEPTION: {e}")
+            self.logger.error(f"Exception occured: {e}")
         finally:
             await self.disconnect(websocket)
 
@@ -639,21 +720,20 @@ class WebSocketServer():
         """
 
         self.server = await serve(self.recv, self.host, self.port, ping_interval=20, ping_timeout=10)
-        print(f"WebsocketServer started on ws://{self.host}:{self.port}")
 
         app = web.Application()
         app.router.add_post('/api/upload', self.handle_file_upload)
         app.router.add_get('/files/{filename}', self.handle_file_download)
         app.router.add_get('/files', self.handle_file_list)
         
-
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, '0.0.0.0', self.http_port)
         await site.start()
 
-        print(f"HTTP Server started on http://{self.host}:{self.http_port}/")
-
+        self.logger.info(f"Websocket Server started on ws://{self.host}:{self.port}")
+        self.logger.info(f"HTTP Server started on http://{self.host}:{self.http_port}/")
+        
         asyncio.ensure_future(self.connect_to_neighbours())
         
         await asyncio.Future()
@@ -663,8 +743,7 @@ class WebSocketServer():
         Connect to neighbours.
         """
         for neighbour_addr, neighbour_public_key in self.neighbours.items():
-            print(f"Scheduling connection to {neighbour_addr}...")
-            # asyncio.create_task(self.connect_to_server(neighbour_addr, neighbour_public_key))
+            self.logger.info(f"Scheduling connection to {neighbour_addr}...")
             await self.connect_to_server(neighbour_addr,neighbour_public_key)
 
 
@@ -855,18 +934,14 @@ class WebSocketServer():
             await asyncio.sleep(0.1)  
 
 if __name__ == "__main__":
-    encryption = Encryption()
     neighbours_1 = {
         "ws://localhost:8001": "server_2_key" 
     }
-    
-    
-    ws_server_1 = WebSocketServer('localhost', 9000, 9001, neighbours_1, 'Server_1_public_key')
-    
     neighbours_2 = {}
-    ws_server_2 = WebSocketServer('localhost', 8001, 8002, neighbours_2, 'Server_2_public_key')
+ 
+    ws_server_1 = WebSocketServer(host='localhost', ws_port=9000, http_port=9001, neighbours=neighbours_1)
+    ws_server_2 = WebSocketServer(host='localhost', ws_port=8001, http_port=8002, neighbours=neighbours_2)
     
-
     async def start_servers():
         await asyncio.gather(
             ws_server_1.start_server(),
