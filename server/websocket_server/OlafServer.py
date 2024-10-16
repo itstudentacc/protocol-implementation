@@ -17,6 +17,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 class ConnectionHandler():
     websocket = None
     public_key = ""
+    private_key = ""
     counter = 0
     async def send(self, message: dict) -> None:
         """
@@ -33,9 +34,10 @@ class OlafServerConnection(ConnectionHandler):
         self.public_key = public_key
 
 class OlafClientConnection(ConnectionHandler):
-    def __init__(self, websocket: ServerConnection, public_key: str):
+    def __init__(self, websocket: ServerConnection, public_key: str, private_key: str):
         self.websocket = websocket
         self.public_key = public_key
+        self.private_key = private_key
 
 class WebSocketServer():
     def __init__(self, host, ws_port, http_port, neighbours, public_key):
@@ -487,6 +489,7 @@ class WebSocketServer():
             return
 
         public_key = signed_data['public_key']
+        private_key = signed_data['private_key']
         client_connection = OlafClientConnection(websocket, public_key)
         
         self.clients.add(client_connection)
@@ -546,6 +549,7 @@ class WebSocketServer():
         """
         signed_data = message['data']
         public_key = "default_key"
+        private_key = "private_key"
         server_addr = signed_data['sender']
 
         if 'ws://' in server_addr:

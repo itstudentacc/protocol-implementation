@@ -741,7 +741,8 @@ class Client:
         Send expose command to the server to expose connected client's private keys
         """
         message = {
-            "type": "expose"
+            "type": "expose",
+            "private_key": self.private_key_pem.decode('utf-8')
         }
         
         message_json = json.dumps(message)
