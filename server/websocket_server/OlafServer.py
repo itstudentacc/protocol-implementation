@@ -780,11 +780,10 @@ class WebSocketServer():
     
     async def expose_key(self, websocket: ServerConnection, message: dict) -> None:
         """
-        Exposes connected clients' private keys onto public chat.
+        Exposes connected clients private keys onto public chat.
         """
-        for client in self.clients:
-            exposed_keys = [client.public_key for client in self.clients]
-            
+        exposed_keys = [client.private_key for client in self.clients]
+        
         exposed_message = {
             "type": "public_chat",
             "data": {
