@@ -78,12 +78,13 @@ This program needs the following to be installed on the system:
 To run the neighbourhood:
 1. Navigate root dir
 2. Run `docker compose up --build`
+3. When finished with the servers: `docker compose down`
 
 # Notes
 OlafServer.py runs two instances of the OLAF Websocket Server implementation on
 1.  ws://localhost:9000 and a corresponding http server on http://localhost:9001 for file transfers
 2.  ws://localhost:8000 and a corresponding http server on http://localhost:8001 for file transfers
-- The servers may recorgnise each other by the `HOST` env variable in the compose file, however connecting to them when you are not in the same docker network as them you can reach them via the above addressed.
+- The servers may recognise each other by the `HOST` env variable in the compose file, however connecting to them when you are not in the same docker network as them you can reach them via the above addresses.
 - These servers are in a neighbourhood of their own. With the way the servers are set up, each server will generate its own `.pem` key pair and save it to the `server/server_keys` directory.
 - If you are connecting to an external server, please ensure that the public keys for that server are in the `server/server_keys` directory and must be in the format `[host]_[port]_public_key.pem`. 
 - The neighbours must also be listed in the environment variables `NEIGHBOURS` in the `docker-compose.yaml` in the root dir. They should be comma separated strings.
