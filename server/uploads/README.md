@@ -1,9 +1,3 @@
-# Group 17 OLAF Protocol Implementation
-
-### Ivan Tranquilan, Kyle Johnston, Gregorius Baswara Wira Nuraga
-
-### To ensure OLAF Chat Protocol is working, please follow the steps below!
-
 # OLAF Neighbourhood protocol client
 
 This is the client-side implementation of the OLAF Neighbourhood chat protocol. It supports features such as secure encrypted messaging using RSA and AES-GCM, public and private chats, and message signing for integrity verification.
@@ -42,7 +36,7 @@ Once the client has begun running, you will be prompted to enter a message type.
 
 - Clients: lists all currently connected client, by nickname
 
-- /transfer: Sends a file to the server. You will need to enter the file name and the recipient's nickname (if sending privately). You can **download** the files by clicking the link on the message
+- /transfer: Sends a file to the server. You will need to enter the file name and the recipient's nickname (if sending privately)
 
 - Files: Lists all files uploaded to the server
 
@@ -52,19 +46,19 @@ Once the client has begun running, you will be prompted to enter a message type.
 
 1. Sending a public chat message
 
-- `Enter message type (public, chat, clients, /transfer, files): public`
+- `Enter message type (public, chat, clients): public`
 - `Enter public chat message: Hello everyone!`
 - `Sent public chat message: Hello everyone!`
 
 2. Sending a Private Chat
 
-   - `Enter message type (public, chat, clients, /transfer, files): chat`
+   - `Enter message type (public, chat, clients): chat`
    - `Enter recipient names, seperated by commas: Alice,Bob`
    - `Enter chat message: Hi guys`
    - `Sent chat message to Alice, Bob: Hi guys`
 
 3. Listing Clients
-   `Enter message type (public, chat, clients, /transfer, files): clients`
+   `Enter message type (public, chat, clients): clients`
 
 - `Connected clients:`
 - `- Alice`
@@ -72,24 +66,23 @@ Once the client has begun running, you will be prompted to enter a message type.
 - `- Charlie`
 - `- John (me)`
 
-4. Sending file through Public Chat or Private Chat (Files need to be within the same directory!)
+4. Sending file through Public Chat or Private Chat
 
 - File upload through public chat : `Enter message type (public, chat, clients, /transfer, files ): /transfer [file to upload]`
 - `Enter message type (public, chat, clients, /transfer, files ): /transfer file.txt`
 - `Public chat from [your username] : [file] https://localhost:9000/file/file.txt`
 - File upload through private chat : `Enter message type (public, chat, clients, /transfer, files ): /transfer [file to upload] [recipient]`
-- `Enter message type (public, chat, clients, /transfer, files ): /transfer file.txt Alice`
+- `Enter message type (public, chat, clients, /transfer, files ): /transfer file.txt Alice` 
 - `New chat from [your username] : [file] https://localhost:9000/file/file.txt`
 
 5. View uploaded files
-
-- `Enter message type (public, chat, clients, /transfer, files): files`
+- `Enter message type (public, chat, clients, /transfer, files ): files`
 - `Uploaded files:`
 - `{"files": ["file.txt"]}`
 
 6. Exiting the client
 
-- `Enter message type (public, chat, clients, /transfer, files): exit`
+- `Enter message type (public, chat, clients): exit`
 
 - `connection closed`
 
@@ -100,46 +93,6 @@ Once the client has begun running, you will be prompted to enter a message type.
 - security/security_module.py: Contains encryption/ decryption and message signing methods.
 
 - nickname_generator.py: Generates nicknames based on their fingerprints for easier identification of clients.
-
-# OLAF Neighbourhood Protocol Server
-
-This is tested in WSL Ubuntu 22.04
-
-## Pre-Requisities
-
-This program needs the following to be installed on the system:
-
-- Python 3.10
-- Pip
-
-## How to use
-
-To run an instance of the server:
-
-1. Navigate to server dir `cd server`
-2. Navigate to websocket_server dir `cd websocket_server`
-3. Install the requirements `pip install -r requirements.txt`
-4. Run the network of servers `python3 OlafServer.py`
-
-# Notes
-
-OlafServer.py runs two instances of the OLAF Websocket Server implementation on
-
-- ws://localhost:9000
-- ws://localhost:8001
-
-Theese servers are in a neighbourhood of their own.
-
-IF you wanted to connect to another server, update the neighbours dict (line 786 for server1 and line 792 for server2) to include neighbours in the format
-
-```
-{ server_addr : server_public_key }
-```
-
-`server_addr` must be in the format `ws::<server_hostname>:<server_port>`.
-`server_public_key` must be copied in as a string.
-
-You can also remove the an instance of the server by removing one of the start commands (Line 797 or 798).
 
 ## Future
 
