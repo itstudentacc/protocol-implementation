@@ -2,7 +2,6 @@ import unittest
 from cryptography.hazmat.primitives import serialization, hashes, padding
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
-import os
 
 # Assuming the Encryption class is in a module named `security_module`
 from security_module import Encryption
