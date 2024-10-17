@@ -17,6 +17,7 @@ services:
       - HTTP_PORT=9001
       - HOST=server1
       - NEIGHBOURS=server2:8000
+      - EXTERNAL_ADDRESS=localhost
     networks:
       - olaf_network
 
@@ -38,6 +39,7 @@ services:
       - HTTP_PORT=8001
       - NEIGHBOURS=server1:9000
       - HOST=server2
+      - EXTERNAL_ADDRESS=localhost
     networks:
       - olaf_network
 
