@@ -1,0 +1,48 @@
+services:
+  server1:
+    build:
+      context: .
+      dockerfile: ./server/Dockerfile
+    container_name: olaf_server1
+    hostname: server1
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./server/server_keys:/app/server/server_keys
+      - ./server/uploads:/app/server/uploads
+    environment:
+      - BIND_ADDRESS=0.0.0.0
+      - WS_PORT=9000
+      - HTTP_PORT=9001
+      - HOST=server1
+      - NEIGHBOURS=server2:8000
+      - EXTERNAL_ADDRESS=localhost
+    networks:
+      - olaf_network
+
+  server2:
+    build:
+      context: .
+      dockerfile: ./server/Dockerfile
+    container_name: olaf_server2
+    hostname: server2
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    volumes:
+      - ./server/server_keys:/app/server/server_keys
+      - ./server/uploads:/app/server/uploads
+    environment:
+      - BIND_ADDRESS=0.0.0.0
+      - WS_PORT=8000
+      - HTTP_PORT=8001
+      - NEIGHBOURS=server1:9000
+      - HOST=server2
+      - EXTERNAL_ADDRESS=localhost
+    networks:
+      - olaf_network
+
+networks:
+  olaf_network:
+    driver: bridge
