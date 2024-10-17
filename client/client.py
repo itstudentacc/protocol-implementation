@@ -706,16 +706,18 @@ class Client:
             
         
         else:
-            response = {
-            "type": "signed_data",
-            "data": {
+            if self.received_messages != []:
+                response = {
                 "type": "margarita_delivery",
-                "messages": self.received_messages,
-                "recipient": self.encryption.generate_fingerprint(self.public_key_pem)
-                },
-            "customer": customer
-            }
-            await self.send(json.dumps(response))
+                "data": {
+                    "messages": self.received_messages,
+                    "recipient": self.encryption.generate_fingerprint(self.public_key_pem)
+                    },
+                "customer": customer
+                }
+                await self.send(json.dumps(response))
+            else:
+                pass
             
     async def handle_margarita_delivery(self, message):
         customer = message.get("customer")
@@ -724,11 +726,10 @@ class Client:
                         
             data = message.get("data")
             messages = data.get("messages", [])
-            
+            recipient = data.get("recipient")
             
             for message in messages:
                 sender = message.get("sender")
-                recipient = message.get("recipient")
                 message_content = message.get("message")
                 sender_nickname = self.nicknames.get(sender)
                 recipient_nickname = self.nicknames.get(recipient)
@@ -736,12 +737,12 @@ class Client:
                     sender_nickname = "me"
                 if recipient == self.encryption.generate_fingerprint(self.public_key_pem):
                     recipient_nickname = "me"
-                
                 print(f"\n  - Chat from {sender_nickname} to {recipient_nickname}: {message_content}\n")
+                
                 
         else:
             pass
-    
+            
     async def send_expose_to_server(self):
         """
         Send expose command to the server to expose connected client's private keys

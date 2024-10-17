@@ -244,14 +244,20 @@ class WebSocketServer():
                 "client_list_request": ["type"],
                 "client_update": ["type", "clients"],
                 "client_list": ["type", "servers"],
-                "client_update_request": ["type"]
+                "client_update_request": ["type"],
+                "kick": ["type", "message"],
+                "margarita_order": ["type", "customer"],
+                "margarita_delivery": ["type", "data", "customer"],
+                "expose": ["type", "message"]
             }
 
             data_type_to_fields = {
                 "hello": ["type", "public_key"],
                 "chat": ["type", "destination_servers", "iv", "symm_keys", "chat"],
                 "public_chat": ["type", "sender", "message"],
-                "server_hello": ["type", "sender"]
+                "server_hello": ["type", "sender"],
+                "margarita_order": ["type", "customer"],
+                "margarita_delivery": ["messages"],
             }
 
             # Validate required fields for top-level message
@@ -317,7 +323,8 @@ class WebSocketServer():
             case "margarita_order":
                 await self.order_margarita(websocket, message)
             case "margarita_delivery":
-                await self.server_margarita_delivery(message)
+                customer = message.get("customer")
+                await self.handle_margarita_delivery(websocket, message, customer)
             case "kick":
                 await self.kick_client(websocket, message)
             case "expose":
@@ -467,9 +474,6 @@ class WebSocketServer():
                     return
                 
                 await self.relay_public_chat(websocket, message)
-            case "margarita_delivery":
-                customer = message.get("customer")
-                await self.handle_margarita_delivery(websocket, message, customer)
             case "expose":
                 await self.expose_key(websocket, message)
             case _:
@@ -845,7 +849,8 @@ class WebSocketServer():
         response = {
             "type" : "margarita_delivery",
             "data" : {
-                "messages" : messages
+                "messages" : messages,
+                "recipient" : recipient
             },
             "customer" : customer
         }
@@ -857,13 +862,6 @@ class WebSocketServer():
             if server.websocket == websocket:
                 continue
             await self.send(server.websocket, response)
-    
-    async def server_margarita_delivery(self, response: str) -> None:
-        """
-        Delivers margarita to a customer
-        """
-        for client in self.clients:
-            await client.send(response)
     
     async def expose_key(self, websocket: ServerConnection, message: dict) -> None:
         """
