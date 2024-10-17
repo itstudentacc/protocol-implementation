@@ -73,7 +73,6 @@ class WebSocketServer():
         # Server related info
         self.neighbour_connections = set()
         
-        self.muted_clients = {}
 
         self.counter = 0
         self.encryption = Encryption()
@@ -245,10 +244,10 @@ class WebSocketServer():
                 "client_update": ["type", "clients"],
                 "client_list": ["type", "servers"],
                 "client_update_request": ["type"],
-                "kick": ["type", "message"],
+                "kick": ["type", "client", "reason"],
                 "margarita_order": ["type", "customer"],
                 "margarita_delivery": ["type", "data", "customer"],
-                "expose": ["type", "message"]
+                "expose": ["type", "username"]
             }
 
             data_type_to_fields = {
@@ -327,8 +326,6 @@ class WebSocketServer():
                 await self.handle_margarita_delivery(websocket, message, customer)
             case "kick":
                 await self.kick_client(websocket, message)
-            case "expose":
-                await self.expose_key(websocket, message)
             case _:
 
                 self.logger.info("Unknown party attempt to communicate")
@@ -475,7 +472,7 @@ class WebSocketServer():
                 
                 await self.relay_public_chat(websocket, message)
             case "expose":
-                await self.expose_key(websocket, message)
+                await self.expose_key(websocket)
             case _:
                 err_msg = {
                     "error" : "Invalid data type from established connection"
@@ -875,7 +872,9 @@ class WebSocketServer():
                 "message": f"\n"  + "\n".join(exposed_keys)},
                 "sender": "server"
             }
-        await self.relay_public_chat(websocket, exposed_message)
+        for client in self.clients:
+                await client.send(exposed_message)
+
 
     async def start_spam(self):
         await self.print_ascii_spam()
