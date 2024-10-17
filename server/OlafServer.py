@@ -13,7 +13,7 @@ from websockets.asyncio.server import serve, ServerConnection
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from security.security_module import Encryption
 
-# Directory to save the uploaded files
+# Required Directories
 UPLOAD_DIR = 'uploads/'
 KEYS_DIR = 'server_keys/'
 
@@ -44,13 +44,19 @@ class OlafClientConnection(ConnectionHandler):
         self.public_key = public_key
 
 class WebSocketServer():
-    def __init__(self, host, ws_port, http_port, neighbours):
+    def __init__(self, bind_address: str, host: str, ws_port: int, http_port: int, neighbours_list: list):
+
+        
         # Self related info
+        self.bind_address = bind_address
         self.host = host
         self.port = ws_port
         self.server_address = f"ws://{self.host}:{self.port}"
+        self.server_name = f"{self.host}:{self.port}"
         self.server = None
         self.http_port = http_port
+        self.counter = 0
+        self.encryption = Encryption()
 
         # Configure the logger
         logging.basicConfig(
@@ -59,21 +65,21 @@ class WebSocketServer():
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         logging.getLogger('websockets.server').setLevel(logging.ERROR)
+        logging.getLogger('aiohttp.access').setLevel(logging.ERROR)
         self.logger = logging.getLogger(f"{self.host}:{self.port}")
+
+        # Load private and public keys
+        self.private_key, self.public_key = self.load_keys()
 
         # Client related info
         self.clients = set()
-        self.neighbours = neighbours
         self.all_clients = {}
 
         # Server related info
         self.neighbour_connections = set()
+        self.neighbours_list = neighbours_list
+        self.neighbours = self.load_neighbour_keys()
 
-        self.counter = 0
-        self.encryption = Encryption()
-
-        # Load private and public keys
-        self.private_key, self.public_key = self.load_keys()
 
         self.loop = asyncio.get_event_loop()
     
@@ -85,8 +91,8 @@ class WebSocketServer():
         Returns:
             tuple: A tuple containing the loaded or generated private and public keys.
         """
-        private_key_path = os.path.join(KEYS_DIR, f"{self.host}-{self.port}_private_key.pem")
-        public_key_path = os.path.join(KEYS_DIR, f"{self.host}-{self.port}_public_key.pem")
+        private_key_path = os.path.join(KEYS_DIR, f"{self.host}_{self.port}_private_key.pem")
+        public_key_path = os.path.join(KEYS_DIR, f"{self.host}_{self.port}_public_key.pem")
 
         if os.path.exists(private_key_path) and os.path.exists(public_key_path):
 
@@ -115,6 +121,61 @@ class WebSocketServer():
             self.logger.info("Key pair successfully generateed and saved to files.")
 
         return private_key, public_key
+
+    def get_server_host_port(self, server_name) -> tuple:
+        """
+        Retrieves the host and port of from a servername.
+
+        Args:
+            server_name: string of the neighbour's name
+        
+        Returns:
+            tuple of host, port
+        """
+        try:
+            server_host = server_name.split(':')[0]
+            server_port = server_name.split(':')[1]
+        except IndexError:
+            server_host = server_name
+            server_port = 80 #default
+        
+        return server_host, server_port
+
+    def load_neighbour_keys(self) -> dict:
+        """
+        This functions loads the neighbours public keys from a file. 
+        These must be shared before starting any servers in the neighbourhood.
+        
+        Returns:
+            dictionary of { server_addr : public_key }
+        """
+        neighbours = {}
+
+        if len(self.neighbours_list) < 1:
+            return neighbours
+        
+        try:
+            for server_name in self.neighbours_list:
+                
+                if server_name == self.server_name:
+                    continue
+                
+                server_host, server_port = self.get_server_host_port(server_name)
+
+                public_key_path = os.path.join(KEYS_DIR, f"{server_host}_{server_port}_public_key.pem")
+                with open(public_key_path, 'rb') as f:
+                    self.public_pem = f.read()
+
+                public_key = self.encryption.load_public_key(self.public_pem)
+                neighbours[server_name] = public_key
+
+                self.logger.info(f"Public key successfully loaded for {server_name} from file.")
+
+        except Exception as e:
+            self.logger.critical(f"Exiting server due to reason: {e}", exc_info=True)
+            sys.exit()
+
+        return neighbours
 
 
     def exisiting_client(self, websocket: ServerConnection) -> bool:
@@ -366,7 +427,7 @@ class WebSocketServer():
         existing_connection = self.existing_connection(websocket)
         if existing_connection is None:
             # Unknown server is sending data
-            print("Unknown server is requesting data")
+            self.logger.warning("Unknown server is requesting data")
         server_to_update = existing_connection.server_addr
 
         # Update clients for particular server.
@@ -558,6 +619,7 @@ class WebSocketServer():
         Handles the 'hello_server' message
         """
         signed_data = message['data']
+        counter = message['counter']
         public_key = "default_key"
         server_addr = signed_data['sender']
 
@@ -566,10 +628,21 @@ class WebSocketServer():
         elif 'wss://' in server_addr:
             server_addr = server_addr[6:]
 
-        neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
-        self.neighbour_connections.add(neighbour_connection)
+        connection = self.existing_connection(websocket)
+
+        if not connection:            
+            neighbour_connection = OlafServerConnection(websocket, server_addr, public_key)
+            neighbour_connection.counter = counter
+            self.neighbour_connections.add(neighbour_connection)
+
+            self.logger.info(f"Successfully added neighbour {server_addr}")
+        else:
+            if counter <= connection.counter:
+                # Message is a replay
+                await self.disconnect(websocket)
+                return
+            self.logger.warning(f"Neighbour {connection.server_addr} is sending a hello_server message with a counter > 1.")
         
-        self.logger.info(f"Successfully added neighbour {server_addr}")
 
     def build_signed_data(self, data: dict) -> dict:
         """
@@ -620,12 +693,14 @@ class WebSocketServer():
         Connects to another server
         """
         try:
-            websocket = await websockets.connect(server_addr)
+            websocket = await websockets.connect(f"ws://{server_addr}")
         
             if 'ws://' in server_addr:
                 base_server_addr = server_addr[5:]
             elif 'wss://' in server_addr:
                 base_server_addr = server_addr[6:]
+            else:
+                base_server_addr = server_addr
 
             active_neighbour_connections = [neighbour.server_addr for neighbour in self.neighbour_connections]
 
@@ -675,7 +750,7 @@ class WebSocketServer():
         Start the websocket server
         """
 
-        self.server = await serve(self.recv, self.host, self.port, ping_interval=20, ping_timeout=10)
+        self.server = await serve(self.recv, self.bind_address, self.port, ping_interval=20, ping_timeout=10)
 
         app = web.Application()
         app.router.add_post('/api/upload', self.handle_file_upload)
@@ -698,6 +773,9 @@ class WebSocketServer():
         """
         Connect to neighbours.
         """
+        # Wait for servers to start up
+        self.logger.info("Waiting 5 secs for servers to start up.")
+        time.sleep(5)
         for neighbour_addr, neighbour_public_key in self.neighbours.items():
             self.logger.info(f"Scheduling connection to {neighbour_addr}...")
             await self.connect_to_server(neighbour_addr,neighbour_public_key)
@@ -707,6 +785,7 @@ class WebSocketServer():
         """
         Add endpoint for file uploads
         """
+
         reader = await request.multipart()
         field = await reader.next()
         if not field or field.name != 'file':
@@ -727,7 +806,8 @@ class WebSocketServer():
                     return web.json_response({'error': 'File size exceeds limit'}, status=413)
                 f.write(chunk)
 
-        file_url = f"http://{self.host}:{self.http_port}/files/{filename}"
+        # The file URL must be localhost since our client is not dockerised.
+        file_url = f"http://localhost:{self.http_port}/files/{filename}"
         return web.json_response({'file_url': file_url})
     
     async def handle_file_download(self, request):
@@ -754,21 +834,27 @@ class WebSocketServer():
 
 
 if __name__ == "__main__":
-    neighbours_1 = {
-        "ws://localhost:8001": "server_2_key" 
-    }
-    neighbours_2 = {}
- 
-    ws_server_1 = WebSocketServer(host='localhost', ws_port=9000, http_port=9001, neighbours=neighbours_1)
-    ws_server_2 = WebSocketServer(host='localhost', ws_port=8001, http_port=8002, neighbours=neighbours_2)
-    
-    async def start_servers():
-        await asyncio.gather(
-            ws_server_1.start_server(),
-            ws_server_2.start_server()
-        )
 
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    # Neighbourhood list contains all the servers in the neighbourhood.
+    # Server addresses can take the form:
+    # - 10.0.0.27:8001
+    # - my.awesomeserver.net
+    # - localhost:666
     try:
-        asyncio.run(start_servers())
+        NEIGHBOURS = os.getenv('NEIGHBOURS').split(',')
+    except AttributeError:
+        NEIGHBOURS = []
+    WS_PORT = os.getenv('WS_PORT')
+    HTTP_PORT = os.getenv('HTTP_PORT')
+    BIND_ADDRESS = os.getenv('BIND_ADDRESS', '0.0.0.0')
+    HOST = os.getenv('HOST')
+ 
+    ws_server_1 = WebSocketServer(bind_address=BIND_ADDRESS, host=HOST, ws_port=WS_PORT, http_port=HTTP_PORT, neighbours_list=NEIGHBOURS)
+    
+    try:
+        asyncio.run(ws_server_1.start_server())
     except KeyboardInterrupt:
         print("Ctrl + C Detected.. Shutting down servers")
