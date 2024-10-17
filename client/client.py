@@ -276,20 +276,6 @@ class Client:
             else:
                 print("Invalid command.")
                 
-    async def send_expose_request(self):
-        """
-        Send a request to the server to expose connected client's private key
-        """
-        self.counter += 1
-
-        message_data = {
-            "type": "expose",
-            "username": self.my_nickname  
-        }
-        json_message = json.dumps(message_data)
-
-        await self.send(json_message)
-
     async def connect(self):
         """
         Connects to the WebSocket server
@@ -754,6 +740,21 @@ class Client:
                 
         else:
             pass
+
+    async def send_expose_request(self):
+        """
+        Send a request to the server to expose connected client's private key
+        """
+        self.counter += 1
+
+        message_data = {
+            "type": "expose",
+            "username": self.my_nickname
+        }
+
+        json_message = json.dumps(message_data)
+
+        await self.send(json_message)
            
     async def send(self, message_json):
         """

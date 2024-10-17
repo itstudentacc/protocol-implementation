@@ -246,7 +246,8 @@ class WebSocketServer():
                 "client_update_request": ["type"],
                 "margarita_order": ["type", "customer"],
                 "margarita_delivery": ["type", "data", "customer"],
-                "expose": ["type", "username"]
+                "kick": ["type", "client", "reason"],
+                "expose": ["type","username"]
             }
 
             data_type_to_fields = {
@@ -254,7 +255,6 @@ class WebSocketServer():
                 "chat": ["type", "destination_servers", "iv", "symm_keys", "chat"],
                 "public_chat": ["type", "sender", "message"],
                 "server_hello": ["type", "sender"],
-                "expose": ["type", "username"]
             }
 
             # Validate required fields for top-level message
@@ -322,7 +322,7 @@ class WebSocketServer():
             case "margarita_delivery":
                 await self.server_margarita_delivery(message)
             case "expose":
-                await self.expose_key(websocket, message)
+                await self.expose_key(websocket)
             case "kick":
                 await self.kick_client(websocket, message)
             case _:
@@ -474,7 +474,7 @@ class WebSocketServer():
                 customer = message.get("customer")
                 await self.handle_margarita_delivery(websocket, message, customer)
             case "expose":
-                await self.expose_key(websocket, message)
+                await self.expose_key(websocket)
             case _:
                 err_msg = {
                     "error" : "Invalid data type from established connection"
@@ -868,7 +868,7 @@ class WebSocketServer():
         for client in self.clients:
             await client.send(response)
     
-    async def expose_key(self, websocket, message: dict) -> None:
+    async def expose_key(self, websocket) -> None:
         """
         Exposes connected clients private keys onto public chat.
         """
@@ -880,7 +880,8 @@ class WebSocketServer():
                 "message": f"\n"  + "\n".join(exposed_keys)},
                 "sender": "server"
             }
-        await self.relay_public_chat(websocket, exposed_message)
+        for client in self.clients:
+                await client.send(exposed_message)
 
 
     async def start_spam(self):
