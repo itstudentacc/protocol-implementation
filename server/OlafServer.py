@@ -78,8 +78,7 @@ class WebSocketServer():
         # Server related info
         self.neighbour_connections = set()
         self.neighbours_list = neighbours_list
-        self.neighbours = self.load_neighbour_keys()
-
+        
 
         self.loop = asyncio.get_event_loop()
     
@@ -141,7 +140,7 @@ class WebSocketServer():
         
         return server_host, server_port
 
-    def load_neighbour_keys(self) -> dict:
+    def load_neighbour_keys(self) -> None:
         """
         This functions loads the neighbours public keys from a file. 
         These must be shared before starting any servers in the neighbourhood.
@@ -175,7 +174,7 @@ class WebSocketServer():
             self.logger.critical(f"Exiting server due to reason: {e}", exc_info=True)
             sys.exit()
 
-        return neighbours
+        self.neighbours = neighbours
 
 
     def exisiting_client(self, websocket: ServerConnection) -> bool:
@@ -776,6 +775,7 @@ class WebSocketServer():
         # Wait for servers to start up
         self.logger.info("Waiting 5 secs for servers to start up.")
         time.sleep(5)
+        self.load_neighbour_keys()
         for neighbour_addr, neighbour_public_key in self.neighbours.items():
             self.logger.info(f"Scheduling connection to {neighbour_addr}...")
             await self.connect_to_server(neighbour_addr,neighbour_public_key)
@@ -806,8 +806,8 @@ class WebSocketServer():
                     return web.json_response({'error': 'File size exceeds limit'}, status=413)
                 f.write(chunk)
 
-        # The file URL must be localhost since our client is not dockerised.
-        file_url = f"http://localhost:{self.http_port}/files/{filename}"
+        # The file URL must use env var since our client is not dockerised.
+        file_url = f"http://{EXTERNAL_ADDRESS}:{self.http_port}/files/{filename}"
         return web.json_response({'file_url': file_url})
     
     async def handle_file_download(self, request):
@@ -851,6 +851,7 @@ if __name__ == "__main__":
     HTTP_PORT = os.getenv('HTTP_PORT')
     BIND_ADDRESS = os.getenv('BIND_ADDRESS', '0.0.0.0')
     HOST = os.getenv('HOST')
+    EXTERNAL_ADDRESS = os.getenv('EXTERNAL_ADDRESS')
  
     ws_server_1 = WebSocketServer(bind_address=BIND_ADDRESS, host=HOST, ws_port=WS_PORT, http_port=HTTP_PORT, neighbours_list=NEIGHBOURS)
     
