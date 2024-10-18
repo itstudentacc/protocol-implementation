@@ -138,26 +138,3 @@ class Encryption:
         
         fingerprint = hashlib.sha256(public_key_pem).digest()
         return base64.b64encode(fingerprint).decode('utf-8')
-
-    # Verify signature using RSA-PSS
-    def validate_signature(self, message, signature, public_key_pem):
-        try:
-            # Load public key
-            public_key = serialization.load_pem_public_key(public_key_pem, backend=self.backend)
-
-            # Verify the signature
-            public_key.verify(
-                signature,
-                message,
-                padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA256()),
-                    salt_length=padding.PSS.MAX_LENGTH
-                ),
-                hashes.SHA256()
-            )
-            return True
-        except Exception as e:
-            print(f"Signature validation failed: {e}")
-            return False
-        
-        
