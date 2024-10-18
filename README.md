@@ -77,20 +77,26 @@ This program needs the following to be installed on the system:
 ## How to use
 To run the neighbourhood:
 1. Navigate root dir
-2. Run `docker compose up --build`
+2. Run `docker compose up --build`. Once the images are built on your local system, the servers can be started with `docker compose up`. There is no need to add the `--build` instruction everytime.
 3. When finished with the servers: `docker compose down`
-
 # Notes
-OlafServer.py runs two instances of the OLAF Websocket Server implementation on
+- This implementation uses WS and HTTP only, attempts to connect to WSS and HTTPS have not been tested.
+- OlafServer.py runs two instances of the OLAF Websocket Server implementation on
 1.  ws://localhost:9000 and a corresponding http server on http://localhost:9001 for file transfers
 2.  ws://localhost:8000 and a corresponding http server on http://localhost:8001 for file transfers
-- The servers may recognise each other by the `HOST` env variable in the compose file, however connecting to them when you are not in the same docker network as them you can reach them via the above addresses.
+- The servers may recognise each other by the `HOST` env variable in the compose file, however connecting to them when you are not in the same docker network as them you can reach them via the `EXTERNAL_ADDRESS` variables.
 - These servers are in a neighbourhood of their own. With the way the servers are set up, each server will generate its own `.pem` key pair and save it to the `server/server_keys` directory.
 - If you are connecting to an external server, please ensure that the public keys for that server are in the `server/server_keys` directory and must be in the format `[host]_[port]_public_key.pem`. 
 - The neighbours must also be listed in the environment variables `NEIGHBOURS` in the `docker-compose.yaml` in the root dir. They should be comma separated strings.
 - Since the clients are not dockerised, the file urls will return a localhost link. This means that it will only be accessible from the machine that the containers are run on.
 
+## How to add a server to the neighbourhood
+1. Add your server's name in the `NEIGHBOURS` env variable in the compose file in the form: `<host>:<port>`.
+2. Add your server's public key .pem file in the `server/server_keys` directory. The filename must be in the form `<host>_<port>_public_key.pem`, which are the same `<host>` and `<port>` in the `NEIGHBOURS` env variable in the compose.yaml.
+3. Run `docker compose up`
+
+### Neighbourhood Notes
+- Our servers wait 5 seconds before loading neighbour keys and trying to connect, you must ensure that your servers are up and running within that time.
 
 ## Future
 - Proper frontend for the client either with a GUI or a web interface
-- Incorporate correct url for files.
