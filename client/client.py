@@ -7,6 +7,7 @@ import logging
 import aiohttp
 import sys
 import os
+import html
 from urllib.parse import urlparse
 from nickname_generator import generate_nickname
 
@@ -14,6 +15,8 @@ from nickname_generator import generate_nickname
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from security.security_module import Encryption
 
+GREEN = "\033[92m"
+RESET = "\033[0m"
 
 # Configure the logger
 logging.basicConfig(level=logging.INFO)
@@ -64,7 +67,11 @@ class Client:
         http_port = await aioconsole.ainput("Enter server HTTP port (e.g., 9001): ")
         self.http_port = http_port
 
-        await self.connect()
+        try:
+            await self.connect()
+        except Exception as e:
+            print(f"Failed to connect: wrong server address or port")
+            sys.exit(1)
         
         my_nickname = generate_nickname(self.encryption.generate_fingerprint(self.public_key_pem))
         print(f"\nYour nickname is: {my_nickname}\n")
@@ -256,10 +263,23 @@ class Client:
                     print("File does not exist.")
             elif message.lower() == "public":
                 chat = await aioconsole.ainput("Enter public chat message: ")
+                chat = chat.strip()
+                chat = html.escape(chat)
+                if not chat:
+                    print("Message cannot be empty")
+                    continue
                 await self.send_public_chat(chat)
             elif message.lower() == "chat":
                 recipients = await aioconsole.ainput("Enter recipient names, separated by commas: ")
+                if not recipients:
+                    print("Recipients cannot be empty")
+                    continue
                 chat = await aioconsole.ainput("Enter chat message: ")
+                chat = chat.strip()
+                chat = html.escape(chat)
+                if not chat:
+                    print("Message cannot be empty")
+                    continue
                 await self.send_chat(recipients.split(","), chat)
             elif message.lower() == "clients":
                 await self.request_client_list()
@@ -363,7 +383,7 @@ class Client:
         message_json = json.dumps(message)
         
         await self.send(message_json)
-        print(f"\nSent public chat message: {chat}\n")
+        print(f"{GREEN}\nSent public chat message: {chat}\n{RESET}")
         
         
     async def send_chat(self, recipients_nicknames, chat):
@@ -443,7 +463,7 @@ class Client:
         
         message_json = json.dumps(signed_data)
         await self.send(message_json)
-        print(f"\nSent chat message to {', '.join(recipients_nicknames)}: {chat}\n")
+        print(f"{GREEN}\nSent chat message to {', '.join(recipients_nicknames)}: {chat}\n{RESET}")
 
 
     async def request_client_list(self):
@@ -509,18 +529,22 @@ class Client:
         
         sender_fingerprint = data.get("sender")
         chat = data.get("message")
+        signature = message.get("signature")
         self.received_messages.append({
             "sender": sender_fingerprint,
             "message": chat
         })
         
         sender_nickname = self.nicknames.get(sender_fingerprint)
+        sender_public_key = self.clients.get(sender_fingerprint)
+        if not sender_public_key:
+            return
         
         # check if sender is me
         if sender_fingerprint == self.encryption.generate_fingerprint(self.public_key_pem):
             sender_nickname = "me"
         
-        print(f"\n  - Public chat from {sender_nickname}: {chat}\n")
+        print(f"{GREEN}\n  - Public chat from {sender_nickname}: {chat}\n{RESET}")
         print(f"Enter message type (public, chat, clients, /transfer, files) (exit to exit): ")
 
 
@@ -621,7 +645,7 @@ class Client:
                     self.received_messages.append(message_entry)
                     
 
-                    print(f"\n  - New chat from {sender_nickname}: {message}\n")
+                    print(f"{GREEN}\n  - New chat from {sender_nickname}: {message}\n{RESET}")
                     print(f"Enter message type (public, chat, clients, /transfer, files) (exit to exit): ")
 
 
